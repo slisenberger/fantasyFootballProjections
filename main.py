@@ -2,6 +2,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import score
+import math
 from collections import defaultdict
 
 # Press Shift+F10 to execute it or replace it with your code.
@@ -20,7 +21,7 @@ def basic_plot():
 
         data = data.append(i_data, sort=True)
 
-    week_four = data.loc[data.week <= 4]
+    week_four = data.loc[data.week == 1]
     all_players = build_player_id_map(week_four)
     scores = defaultdict(float)
 

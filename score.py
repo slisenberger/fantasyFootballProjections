@@ -1,4 +1,6 @@
 from collections import defaultdict
+import math
+import pandas as pd
 
 # Offensive Scoring Categories
 _TOUCHDOWN_RUSHING = "TOUCHDOWN_RUSHING"
@@ -73,8 +75,8 @@ def score_from_play(play):
     # A map of player ID to the score they receive on this play.
     scores_on_play = defaultdict(float)
     if play.pass_touchdown:
-        scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TOUCHDOWN_PASSING]
-        scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TOUCHDOWN_RECEIVING]
+       scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TOUCHDOWN_PASSING]
+       scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TOUCHDOWN_RECEIVING]
     if play.rush_touchdown:
         scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_TOUCHDOWN_RUSHING]
     if play.return_touchdown:
@@ -85,13 +87,23 @@ def score_from_play(play):
        scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_RECEPTION]
     if play.passing_yards > 0:
        scores_on_play[play.passer_player_id] += _SCORING_VALUES[_YARDS_PASSING] * play.passing_yards
-    if play.rusher_player_id:
+    if play.rushing_yards > 0 or play.rushing_yards < 0:
        scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_YARDS_RUSHING] * play.rushing_yards
-    if play.return_yards:
+    if play.kickoff_returner_player_id or play.punt_returner_id:
         return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
         scores_on_play[return_id] += _SCORING_VALUES[_YARDS_RETURN] * play.return_yards
     if play.interception:
         scores_on_play[play.passer_player_id] += _SCORING_VALUES[_INTERCEPTION_THROW]
+    if play.fumble_lost:
+        scores_on_play[play.fumbled_1_player_id] += _SCORING_VALUES[_FUMBLE_LOST]
+    if play.two_point_conv_result == "success":
+
+        if not pd.isnull(play.rusher_player_id):
+            scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
+        if not pd.isnull(play.receiver_player_id):
+            scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
+            scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
+
 
 
 
