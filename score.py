@@ -1,11 +1,13 @@
+from collections import defaultdict
+
 # Offensive Scoring Categories
 _TOUCHDOWN_RUSHING = "TOUCHDOWN_RUSHING"
 _TOUCHDOWN_RECEIVING = "TOUCHDOWN_RECEIVING"
-_TOUCHDOWN_THROWING = "TOUCHDOWN_THROWING"
+_TOUCHDOWN_PASSING = "TOUCHDOWN_PASSING"
 _TOUCHDOWN_RETURN = "TOUCHDOWN_RETURN"
 _YARDS_RUSHING = "YARDS_RUSHING"
 _YARDS_RECEIVING = "YARDS_RECEIVING"
-_YARDS_THROWING = "YARDS_THROWING"
+_YARDS_PASSING = "YARDS_PASSING"
 _YARDS_RETURN = "YARDS_RETURN"
 _RECEPTION = "RECEPTION"
 _INTERCEPTION_THROW = "INTERCEPTION_THROW"
@@ -37,11 +39,11 @@ _POINTS_ALLOWED_35_OR_MORE = "POINTS_ALLOWED_35_OR_MORE"
 _SCORING_VALUES = {
     _TOUCHDOWN_RUSHING: 6,
     _TOUCHDOWN_RECEIVING: 6,
-    _TOUCHDOWN_THROWING: 4,
+    _TOUCHDOWN_PASSING: 4,
     _TOUCHDOWN_RETURN: 6,
     _YARDS_RUSHING: .1,
     _YARDS_RECEIVING: .1,
-    _YARDS_THROWING: .04,
+    _YARDS_PASSING: .04,
     _YARDS_RETURN: .04,
     _RECEPTION: .5,
     _INTERCEPTION_THROW: -1.5,
@@ -67,4 +69,32 @@ _SCORING_VALUES = {
     _POINTS_ALLOWED_35_OR_MORE: -4,
 }
 
+def score_from_play(play):
+    # A map of player ID to the score they receive on this play.
+    scores_on_play = defaultdict(float)
+    if play.pass_touchdown:
+        scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TOUCHDOWN_PASSING]
+        scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TOUCHDOWN_RECEIVING]
+    if play.rush_touchdown:
+        scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_TOUCHDOWN_RUSHING]
+    if play.return_touchdown:
+        return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
+        scores_on_play[return_id] += _SCORING_VALUES[_TOUCHDOWN_RETURN]
+    if play.receiving_yards > 0:
+       scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_YARDS_RECEIVING] * play.receiving_yards
+       scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_RECEPTION]
+    if play.passing_yards > 0:
+       scores_on_play[play.passer_player_id] += _SCORING_VALUES[_YARDS_PASSING] * play.passing_yards
+    if play.rusher_player_id:
+       scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_YARDS_RUSHING] * play.rushing_yards
+    if play.return_yards:
+        return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
+        scores_on_play[return_id] += _SCORING_VALUES[_YARDS_RETURN] * play.return_yards
+    if play.interception:
+        scores_on_play[play.passer_player_id] += _SCORING_VALUES[_INTERCEPTION_THROW]
+
+
+
+
+    return scores_on_play
 
