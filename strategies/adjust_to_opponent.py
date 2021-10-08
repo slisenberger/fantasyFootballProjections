@@ -8,3 +8,5 @@
 # Compute opponent adjustment
 # Apply to baseline (perhaps adding variance -- strategies can be extensible)
 # Return output (score for each player).
+
+def compute_team_tendencies():

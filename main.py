@@ -3,6 +3,8 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import score
 import math
+from teams import stats
+from players import player_stats
 from collections import defaultdict
 
 # Press Shift+F10 to execute it or replace it with your code.
@@ -11,7 +13,7 @@ from collections import defaultdict
 # The Hello World will be correctly plotting the leaders in fantasy points for week 4. This ensures two goals:
 # Testability, we can compare with unit tests.
 # Our point calculation is correct.
-def basic_plot():
+def calculate_fantasy_leaders():
     YEARS = [2021]
     data = pd.DataFrame()
 
@@ -21,7 +23,7 @@ def basic_plot():
 
         data = data.append(i_data, sort=True)
 
-    week_four = data.loc[data.week == 1]
+    week_four = data.loc[data.week == 2]
     all_players = build_player_id_map(week_four)
     scores = defaultdict(float)
 
@@ -38,9 +40,8 @@ def basic_plot():
           new_base_data.append([row[0], all_players[row[0]], row[1]])
     w4_scores = pd.DataFrame(new_base_data, columns=["player_id", "Player Name", "Score"])
     w4_scores_sorted = w4_scores.sort_values(by=["Score"], ascending=False)
-
-
     print(w4_scores_sorted)
+
 
 
 def load_and_clean_data():
@@ -88,6 +89,7 @@ if __name__ == '__main__':
     ## load_and_clean_data()
 
     # Create an easier way to identify players in fantasy
-    basic_plot()
+    # stats.calculate_team_statistics()
+    player_stats.calculate_player_statistics()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
