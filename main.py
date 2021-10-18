@@ -5,6 +5,7 @@ import score
 import math
 from teams import stats
 from players import player_stats
+from models import playcall
 from collections import defaultdict
 
 # Press Shift+F10 to execute it or replace it with your code.
@@ -23,7 +24,7 @@ def calculate_fantasy_leaders():
 
         data = data.append(i_data, sort=True)
 
-    week_four = data.loc[data.week == 2]
+    week_four = data.loc[data.week <= 5]
     all_players = build_player_id_map(week_four)
     scores = defaultdict(float)
 
@@ -86,10 +87,13 @@ def build_player_id_map(data):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
-    ## load_and_clean_data()
+    # load_and_clean_data()
 
     # Create an easier way to identify players in fantasy
-    # stats.calculate_team_statistics()
-    player_stats.calculate_player_statistics()
+    #team_stats = stats.calculate_team_statistics()
+
+    #player_stats.calculate_player_statistics(team_stats)
+    # calculate_fantasy_leaders()
+    playcall.build_playcall_model()
 
 # See PyCharm help at https://www.jetbrains.com/help/pycharm/
