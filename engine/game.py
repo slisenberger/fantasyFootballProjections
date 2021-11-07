@@ -1,4 +1,5 @@
 import random
+import models
 
 
 # I think the API I want is something like: result = advance_snap(game_state)
@@ -16,12 +17,19 @@ class GameState:
       self.quarter = 0
       # Current down
       self.down = 1
+      self.yds_to_go = 10
       # Time remaining in quarter, in seconds
       self.sec_remaining = 15*60
       self.home_score = 0
       self.away_score = 0
       # A representation of the yard line, where 0 is the home endzone and 100 is the away endzone
       self.yard_line = 50
+
+      # The logistic regression that assigns playcall probabilities. These are
+      # adjusted up or down with team tendencies.
+      self.playcall_model = models.playcall.build_or_load_playcall_model()
+      self.yac_model = models.receivers.build_or_load_yac_kde()
+      self.air_yards_model = models.receivers.build_or_load_air_yards_kde()
 
 
   def add_points(self, team, points):
@@ -36,21 +44,28 @@ def advance_snap(gamestate):
     play_type = choose_play_type(gamestate)
     if play_type == RUN:
         choose_carrier()
-    if play_type = PASS:
+    if play_type == PASS:
         choose_target()
 
     compute_yards()
     update_game_state()
 
 """Chooses a play type between running and passing
-
-Currently, this ignores the game state and randomly chooses
-and outcome. When implemented correctly, this will be a model
-that takes into account team tendencies and league-wide
-game-state tendencies.
 """
 def choose_play_type(gamestate):
-   return "RUN"
+    # Construct model input for logistic model
+    model_input = [
+        gamestate.down,
+        gamestate.yds_to_go,
+        gamestate.home_score - gamestate.away_score,
+        gamestate.sec_remaining,
+        gamestate.quarter,
+        gamestate.yardline]
+
+    # Get baseline probabilities
+
+    # Adjust for Team Trends
+    return "RUN"
 
 """Chooses an intended receiver for a given gamestate and team/player stats"""
 def choose_target():
@@ -60,4 +75,5 @@ def choose_carrier():
     return None
 
 """Determines if an intended pass was complete."""
-def is_complete()
+def is_complete():
+    return False

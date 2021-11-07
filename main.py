@@ -1,15 +1,11 @@
 # This is a sample Python script.
+import nfl_data_py
 import pandas as pd
-import matplotlib.pyplot as plt
 import score
-import math
-from teams import stats
-from players import player_stats
-from models import playcall
+from engine import game
+from stats import players, teams
+from models import kicking, playcall, receivers
 from collections import defaultdict
-
-# Press Shift+F10 to execute it or replace it with your code.
-# Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 # The Hello World will be correctly plotting the leaders in fantasy points for week 4. This ensures two goals:
 # Testability, we can compare with unit tests.
@@ -24,7 +20,7 @@ def calculate_fantasy_leaders():
 
         data = data.append(i_data, sort=True)
 
-    week_four = data.loc[data.week <= 5]
+    week_four = data.loc[data.week == 8]
     all_players = build_player_id_map(week_four)
     scores = defaultdict(float)
 
@@ -50,12 +46,9 @@ def load_and_clean_data():
 
     pd.options.mode.chained_assignment = None
 
-    # Enter desired years of data
-    YEARS = [1999, 2000, 2001, 2002, 2003,
-             2004, 2005, 2006, 2007, 2008,
-             2009, 2010, 2011, 2012, 2013,
-             2014, 2015, 2016, 2017, 2018,
-             2019, 2020, 2021]
+    # Enter desired years of data. Data goes back to '99, but we don't need
+    # to update it.
+    YEARS = [2021]
 
     for i in YEARS:
         # Link to data repo
@@ -80,6 +73,39 @@ def build_player_id_map(data):
 
     return all_players
 
+# Projects the next week's estimated fantasy points.
+
+# To produce anything, I have this set only to 2021. However, this will be refactored.
+def project_week(player_stats, team_stats, week):
+    schedules = nfl_data_py.import_schedules([2021])
+    schedules = schedules.loc[schedules.week == week]
+    for i, row in schedules.iterrows():
+        print("Projecting %s at %s" % (row.away_team, row.home_team))
+        project_game(player_stats, team_stats, row.home_team, row.away_team, week)
+
+def project_game(player_stats, team_stats, home, away, week):
+    # load rosters and injury information.
+    depth_charts = nfl_data_py.import_depth_charts([2021])
+    injuries = nfl_data_py.import_injuries([2021])
+    rosters = nfl_data_py.import_rosters([2021], ["team", "player_name", "position", "player_id"])
+
+
+    # Get all the injuries for a team
+    injuries = injuries.loc[injuries.week == week]
+    injuries = injuries[injuries["team"].isin([home,away])]
+    injuries = injuries[injuries["report_status"].isin(["Out"])]
+    print("players ruled out: \n\n%s" % injuries[["full_name","gsis_id"]])
+
+    print("fantasy relevant players in this game:")
+    rosters = rosters[rosters["team"].isin([home,away])]
+    rosters = rosters[rosters["position"].isin(["RB", "WR", "TE", "QB"])]
+    print(rosters)
+
+    # Here's all data about the players:
+    game_stats = player_stats[player_stats["team"].isin([home, away])]
+    print(game_stats[["player_name", "cpoe"]])
+    game_machine = game.GameState(home, away)
+    pass
 
 
 
@@ -87,13 +113,18 @@ def build_player_id_map(data):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
-    # load_and_clean_data()
+    #load_and_clean_data()
+    #calculate_fantasy_leaders()
+
 
     # Create an easier way to identify players in fantasy
-    #team_stats = stats.calculate_team_statistics()
-
-    #player_stats.calculate_player_statistics(team_stats)
+    team_stats = teams.calculate()
+    player_stats = players.calculate(team_stats)
     # calculate_fantasy_leaders()
-    playcall.build_playcall_model()
+    playcall_model = playcall.build_or_load_playcall_model()
+    kick_model = kicking.build_or_load_kicking_model()
+    yac_model = receivers.build_or_load_yac_kde()
+    air_yards_model = receivers.build_or_load_air_yards_kde()
 
-# See PyCharm help at https://www.jetbrains.com/help/pycharm/
+    project_week(player_stats, team_stats, 9)
+
