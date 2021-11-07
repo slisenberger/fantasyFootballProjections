@@ -1,3 +1,1 @@
- # A schedule contains information about which opponents are being faced.
-
- class Schedule():
+# Convert between Week/Year format and a linear index.

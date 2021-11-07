@@ -1,6 +1,6 @@
 import pandas as pd
 # Calculate 2021 team statistics that are used to determine tendencies.
-def calculate_player_statistics(team_stats):
+def calculate(team_stats):
     YEARS = [2021]
     data = pd.DataFrame()
     for i in YEARS:
@@ -9,6 +9,7 @@ def calculate_player_statistics(team_stats):
 
         data = data.append(i_data, sort=True)
 
+    data.reset_index(drop=True, inplace=True)
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
 
@@ -27,10 +28,10 @@ def calculate_player_statistics(team_stats):
     receiver_air_yards_per_target = data.groupby("receiver_player_id")["air_yards"].mean() \
         .sort_values().to_frame(name='air_yards_per_target').reset_index() \
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_yac_oe = data.groupby("receiver_player_id")["yards_after_catch"].sum().sort_values()\
+    receiver_yac = data.groupby("receiver_player_id")["yards_after_catch"].sum().sort_values()\
         .to_frame(name='yac').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_yac = data.groupby("receiver_player_id")["yac_oe"].sum().sort_values()\
+    receiver_yac_oe = data.groupby("receiver_player_id")["yac_oe"].sum().sort_values()\
         .to_frame(name='yac_oe').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
     rushing_carries = data.groupby("rusher_player_id").size().sort_values()\
@@ -74,13 +75,15 @@ def calculate_player_statistics(team_stats):
     offense_stats['red_zone_target_percentage'] = offense_stats.apply(lambda row: row["red_zone_targets"] / row["red_zone_targets_team"], axis=1)
     offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
 
-    print(team_targets)
     # Compute team relative stats like target % and carry %
     #offense_stats['target_percentage'] = offense_stats.apply(lambda row: row["targets"] / team_stats.loc[team_stats["team"] == row["team_name"]])
 
 
     offense_stats.to_csv('offense_stats.csv')
-    print(offense_stats)
+    return offense_stats
+
+def calculate_weekly_stats():
+    pass
 
 def build_player_id_map(data):
     all_players = {}

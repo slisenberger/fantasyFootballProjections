@@ -1,6 +1,6 @@
 import pandas as pd
 # Calculate 2021 team statistics that are used to determine tendencies.
-def calculate_team_statistics():
+def calculate():
     YEARS = [2021]
     data = pd.DataFrame()
     for i in YEARS:
@@ -105,6 +105,5 @@ def calculate_team_statistics():
     team_stats['offense_hold_rate'] = team_stats['offense_holds_drawn'] / team_stats['offense_snaps']
     team_stats['defense_hold_rate'] = team_stats['defense_holds_drawn'] / team_stats['defense_snaps']
 
-    print(team_stats)
     team_stats.to_csv("team_stats.csv")
     return team_stats
