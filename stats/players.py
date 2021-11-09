@@ -1,15 +1,11 @@
 import pandas as pd
-# Calculate 2021 team statistics that are used to determine tendencies.
+from stats import loader
+
+# Calculate statistics about players
 def calculate(team_stats):
+
     YEARS = [2021]
-    data = pd.DataFrame()
-    for i in YEARS:
-        i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
-                             compression='gzip', low_memory=False)
-
-        data = data.append(i_data, sort=True)
-
-    data.reset_index(drop=True, inplace=True)
+    data = loader.load_data(YEARS)
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
 
@@ -48,6 +44,12 @@ def calculate(team_stats):
     cpoe = data.groupby("passer_player_id")["cpoe"].mean() \
         .to_frame(name="cpoe").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
+    pass_attempts = data.groupby("passer_player_id").size() \
+        .to_frame(name="pass_attempts").reset_index() \
+        .rename(columns={'passer_player_id': 'player_id'})
+    kick_attempts = data.groupby("kicker_player_id").size() \
+        .to_frame(name="kick_attempts").reset_index() \
+        .rename(columns={'kicker_player_id': 'player_id'})
     all_players = build_player_id_map(data)
     all_teams = build_player_team_map(data)
     offense_stats = receiver_targets\
@@ -61,7 +63,9 @@ def calculate(team_stats):
         .merge(yards_per_carry, how="outer", on="player_id") \
         .merge(red_zone_carries, how="outer", on="player_id") \
         .merge(big_carries, how="outer", on="player_id")\
-        .merge(cpoe, how="outer", on="player_id")
+        .merge(cpoe, how="outer", on="player_id")\
+        .merge(pass_attempts, how="outer", on="player_id")\
+        .merge(kick_attempts, how="outer", on="player_id")
     offense_stats['big_carry_percentage'] = offense_stats["big_carries"] / offense_stats["carries"]
 
 
@@ -82,8 +86,39 @@ def calculate(team_stats):
     offense_stats.to_csv('offense_stats.csv')
     return offense_stats
 
-def calculate_weekly_stats():
-    pass
+def calculate_weekly(weekly_team_stats):
+    YEARS = [2021]
+    data = loader.load_data(YEARS)
+    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
+    all_players = build_player_id_map(data)
+    all_teams = build_player_team_map(data)
+    weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
+    weekly_rusher_data = data.groupby(["rusher_player_id", "week"])
+    weekly_targets = weekly_receiver_data.size().sort_values().to_frame(name='targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
+    weekly_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='red_zone_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
+    weekly_deep_targets = data.loc[data.air_yards >= 30].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='deep_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
+    weekly_air_yards_target = weekly_receiver_data["air_yards"].mean().sort_values().to_frame(name='air_yards_per_target_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
+    weekly_carries = weekly_rusher_data.size().sort_values().to_frame(name="carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
+    weekly_red_zone_carries = data.loc[data.yardline_100 <= 10].groupby(["rusher_player_id", "week"]).size().sort_values().to_frame(name="red_zone_carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
+    weekly_yards_per_carry = weekly_rusher_data["rushing_yards"].mean().sort_values().to_frame(name='yards_per_carry_wk').reset_index().rename(columns={'rusher_player_id':'player_id'})
+
+    weekly_stats = weekly_targets\
+        .merge(weekly_red_zone_targets, how="outer", on=["player_id", "week"])\
+        .merge(weekly_deep_targets, how="outer", on=["player_id", "week"])\
+        .merge(weekly_air_yards_target, how="outer", on=["player_id", "week"])\
+        .merge(weekly_carries, how="outer", on=["player_id", "week"])\
+        .merge(weekly_red_zone_carries, how="outer", on=["player_id", "week"])\
+        .merge(weekly_yards_per_carry, how="outer", on=["player_id", "week"])
+
+    weekly_stats['team'] = weekly_stats.apply(lambda row: all_teams[row['player_id']], axis=1)
+    weekly_team_targets = weekly_team_stats[["team", "week", "targets_wk", "carries_wk"]]
+    weekly_stats = weekly_stats.merge(weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"])
+    weekly_stats['target_percentage_wk'] = weekly_stats.apply(lambda row: row["targets_wk"] / row["targets_wk_team"], axis=1)
+    weekly_stats['carry_percentage_wk'] = weekly_stats.apply(lambda row: row["carries_wk"] / row["carries_wk_team"], axis=1)
+    weekly_stats['player_name'] = weekly_stats.apply(lambda row: all_players[row['player_id']], axis=1)
+
+    weekly_stats.to_csv("weekly_stats.csv")
+    return weekly_stats
 
 def build_player_id_map(data):
     all_players = {}

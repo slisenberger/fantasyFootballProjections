@@ -4,7 +4,7 @@ import joblib
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 
-model_name = "playcall_regression_model"
+model_name = "models/trained_models/playcall_regression_model"
 
 def build_or_load_playcall_model():
     try:
