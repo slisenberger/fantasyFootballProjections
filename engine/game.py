@@ -72,27 +72,32 @@ class GameState:
 
   def advance_snap(self):
     playcall = self.choose_playcall()
-    player = None
     yards = 0
     td = False
+    sack = False
     if playcall == "run":
         carrier = self.choose_carrier()
-        player = carrier
         carrier_id = carrier["player_name"].values[0]
         yards = self.compute_carry_yards(carrier)
     if playcall == "pass":
         qb = self.choose_quarterback()
         qb_id = qb["player_name"].values[0]
-        # TODO: Estimate sacks and make sure to change outcome for them.
-        target = self.choose_target()
-        target_id = target["player_name"].values[0]
-        player = target
-        air_yards = self.compute_air_yards()
-        is_complete = self.is_complete(air_yards)
+        offense_sack_rate = self.get_pos_team_stats()["offense_sacks_per_dropback"].values[0]
+        if random.random() < offense_sack_rate:
+            sack = True
+            print("SACK!!!")
+            yards = -7
 
-        if is_complete:
-            yac = self.compute_yac(target)
-            yards = air_yards + yac
+        if not sack:
+            target = self.choose_target()
+            target_id = target["player_name"].values[0]
+
+            air_yards = self.compute_air_yards()
+            is_complete = self.is_complete(air_yards)
+
+            if is_complete:
+                yac = self.compute_yac(target)
+                yards = air_yards + yac
 
 
     if playcall == "punt":
@@ -105,14 +110,23 @@ class GameState:
         return
 
     k = self.choose_kicker()
-    k_id = k["player_name"].values[0]
+    try:
+      k_id = k["player_name"].values[0]
+    except IndexError:
+      k_id = "Kicker_%s" % self.posteam
 
+    # If more yards were gained than remaining yards, touchdown.
     if yards > self.yard_line:
       yards = self.yard_line
       self.touchdown()
       td = True
 
-    elif self.yds_to_go < yards:
+    # Tackled for loss into endzone should result in safety.
+    elif self.yard_line - yards > 100:
+        self.safety()
+
+    # If more yards were gained than remaining yards
+    elif self.yds_to_go <= yards:
         self.yard_line -= yards
         self.first_down()
     else:
@@ -130,7 +144,7 @@ class GameState:
             self.fantasy_points[carrier_id] += 6
             # TODO: model this
             self.fantasy_points[k_id] += 1
-    if playcall == "pass" and is_complete:
+    if playcall == "pass" and not sack and is_complete:
         self.fantasy_points[qb_id] += .04 * yards
         self.fantasy_points[target_id] += .1 * yards
         self.fantasy_points[target_id] += .5
@@ -151,6 +165,20 @@ class GameState:
           self.away_score += 7
 
       self.kickoff()
+
+  def safety(self):
+      # Give 2 points to the team that does not have the ball.
+      if self.posteam == self.home_team:
+          self.away_score += 2
+      else:
+          self.home_score += 2
+
+      print("%s surrendered a safety! lol" % self.posteam)
+
+      # Have to change possession first, so when the kickoff changes back it's normal.
+      self.change_possesion()
+      self.kickoff()
+
 
 
   def advance_clock(self):
@@ -289,7 +317,10 @@ class GameState:
       good = random.choices(self.field_goal_model.classes_, weights=base_probs, k=1)[0]
       if good:
           k = self.choose_kicker()
-          k_id = k["player_name"].values[0]
+          try:
+            k_id = k["player_name"].values[0]
+          except IndexError:
+            k_id = "Kicker_%s" % self.posteam
           if kicking_yards <= 39:
               self.fantasy_points[k_id] += 3
           elif kicking_yards <= 49:
