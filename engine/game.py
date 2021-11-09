@@ -1,5 +1,6 @@
 import random
 import models
+from collections import defaultdict
 
 
 # I think the API I want is something like: result = advance_snap(game_state)
@@ -25,8 +26,7 @@ class GameState:
       # A representation of the yard line, where 0 is the home endzone and 100 is the away endzone
       self.yard_line = 50
 
-      # The logistic regression that assigns playcall probabilities. These are
-      # adjusted up or down with team tendencies.
+      # The models used to inform probabilities and choices.
       self.playcall_model = models.playcall.build_or_load_playcall_model()
       self.yac_model = models.receivers.build_or_load_yac_kde()
       self.air_yards_model = models.receivers.build_or_load_air_yards_kde()
@@ -41,11 +41,14 @@ class GameState:
       self.away_player_stats = away_player_stats
       self.home_team_stats = home_team_stats
       self.away_team_stats = away_team_stats
+      self.fantasy_points = defaultdict(float)
 
   def play_game(self):
       self.opening_kickoff()
       while not self.game_over:
           self.advance_snap()
+
+      return self.fantasy_points
 
   def change_possession(self):
       if self.posteam == self.home_team:
@@ -71,19 +74,25 @@ class GameState:
     playcall = self.choose_playcall()
     player = None
     yards = 0
+    td = False
     if playcall == "run":
-        player = self.choose_carrier()
-        yards = self.compute_carry_yards()
+        carrier = self.choose_carrier()
+        player = carrier
+        carrier_id = carrier["player_name"].values[0]
+        yards = self.compute_carry_yards(carrier)
     if playcall == "pass":
-        player = self.choose_target()
+        qb = self.choose_quarterback()
+        qb_id = qb["player_name"].values[0]
+        # TODO: Estimate sacks and make sure to change outcome for them.
+        target = self.choose_target()
+        target_id = target["player_name"].values[0]
+        player = target
         air_yards = self.compute_air_yards()
         is_complete = self.is_complete(air_yards)
 
         if is_complete:
-            yac = self.compute_yac()
+            yac = self.compute_yac(target)
             yards = air_yards + yac
-        else:
-            print("pass of %s yards intended for %s incomplete" % (air_yards, player))
 
 
     if playcall == "punt":
@@ -92,13 +101,17 @@ class GameState:
 
     if playcall == "field_goal":
         self.field_goal()
+        k = self.choose_kicker()
         return
 
+    k = self.choose_kicker()
+    k_id = k["player_name"].values[0]
 
     if yards > self.yard_line:
       yards = self.yard_line
-      print("Touchdown %s!" % player)
       self.touchdown()
+      td = True
+
     elif self.yds_to_go < yards:
         self.yard_line -= yards
         self.first_down()
@@ -110,20 +123,38 @@ class GameState:
           self.down = self.down+1
           self.yds_to_go -= yards
 
+    # Count the fantasy points for this play.
+    if playcall == "run":
+        self.fantasy_points[carrier_id] += .1 * yards
+        if td:
+            self.fantasy_points[carrier_id] += 6
+            # TODO: model this
+            self.fantasy_points[k_id] += 1
+    if playcall == "pass" and is_complete:
+        self.fantasy_points[qb_id] += .04 * yards
+        self.fantasy_points[target_id] += .1 * yards
+        self.fantasy_points[target_id] += .5
+        if td:
+            self.fantasy_points[qb_id] += 4
+            self.fantasy_points[target_id] += 6
+            # TODO: model this
+            self.fantasy_points[k_id] += 1
+
     self.advance_clock()
+
 
 
   def touchdown(self):
       if self.posteam == self.home_team:
-          self.home_score += 6
+          self.home_score += 7
       else:
-          self.away_score += 6
+          self.away_score += 7
 
       self.kickoff()
 
 
   def advance_clock(self):
-      self.sec_remaining -= 20
+      self.sec_remaining -= 30
       if self.sec_remaining <= 0:
           if self.quarter == 2:
               self.half_time()
@@ -143,7 +174,6 @@ class GameState:
       self.first_down()
 
 
-
   def first_down(self):
       self.down = 1
       self.yds_to_go = 10 if self.yard_line >= 10 else self.yard_line
@@ -157,6 +187,8 @@ class GameState:
 
   # Choose a play type for this snap
   def choose_playcall(self):
+    PASS_INDEX = 1
+    RUN_INDEX = 3
     # Baseline -- Use a logistic regression model to choose a playtype.
     model_input = [
         self.down,
@@ -168,29 +200,76 @@ class GameState:
 
     base_probs = self.playcall_model.predict_proba([model_input])[0]
     # Adjust probabilities for team trends
+    defense_pass_oe = self.get_def_team_stats()["defense_pass_oe"].values[0] / 100.0
+    offense_pass_oe = self.get_pos_team_stats()["offense_pass_oe"].values[0] / 100.0
+    base_probs[PASS_INDEX] += defense_pass_oe
+    base_probs[PASS_INDEX] += offense_pass_oe
+    base_probs[RUN_INDEX] -= defense_pass_oe
+    base_probs[RUN_INDEX] -= offense_pass_oe
+
     playcall = random.choices(self.playcall_model.classes_, weights=base_probs, k=1)[0]
     return playcall
 
   def choose_target(self):
-      pos_player_stats = self.get_pos_stats()
-      eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][["player_name", "target_percentage"]]
-      target = random.choices(eligible_targets["player_name"].tolist(), weights=eligible_targets["target_percentage"].tolist(), k=1)[0]
-      return target
+      pos_player_stats = self.get_pos_player_stats()
+      eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][["player_id", "player_name", "target_percentage", "targets", "relative_yac"]]
+      target = random.choices(eligible_targets["player_id"].tolist(), weights=eligible_targets["target_percentage"].tolist(), k=1)[0]
+      return eligible_targets.loc[eligible_targets["player_id"] == target]
 
   def choose_carrier(self):
-      pos_player_stats = self.get_pos_stats()
-      eligible_carriers = pos_player_stats.loc[pos_player_stats["carry_percentage"] > 0][["player_name", "carry_percentage"]]
-      carrier = random.choices(eligible_carriers["player_name"].tolist(), weights=eligible_carriers["carry_percentage"].tolist(), k=1)[0]
-      return carrier
+      pos_player_stats = self.get_pos_player_stats()
+      eligible_carriers = pos_player_stats.loc[pos_player_stats["carry_percentage"] > 0][[
+          "player_id", "player_name", "carry_percentage", "big_carry_percentage",
+          "carries", "relative_ypc"]]
+      carrier = random.choices(eligible_carriers["player_id"].tolist(), weights=eligible_carriers["carry_percentage"].tolist(), k=1)[0]
+      return eligible_carriers.loc[eligible_carriers["player_id"] == carrier]
+
+  def choose_quarterback(self):
+      pos_player_stats = self.get_pos_player_stats()
+      eligible_qbs = pos_player_stats.loc[pos_player_stats["pass_attempts"] > 0][["player_id", "player_name", "cpoe", "pass_attempts"]]
+      qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
+      return qb
+
+  def choose_kicker(self):
+      pos_player_stats = self.get_pos_player_stats()
+      eligible_ks = pos_player_stats.loc[pos_player_stats["kick_attempts"] > 0][
+          ["player_id", "player_name", "kick_attempts"]]
+      k = eligible_ks.sort_values(by="kick_attempts", ascending=False).head(1)
+      return k
 
   def compute_air_yards(self):
-      return self.air_yards_model.sample(n_samples=1)[0]
+      return self.air_yards_model.sample(n_samples=1)[0][0]
 
-  def compute_yac(self):
-      return self.yac_model.sample(n_samples=1)[0]
+  def compute_yac(self, target):
+      yac = self.yac_model.sample(n_samples=1)[0]
+      # Come up with a way to handle small sample high yac players
+      targets = target["targets"].values[0]
+      relative_yac = target["relative_yac"].values[0]
+      defense_relative_yac = self.get_def_team_stats()["defense_relative_yac"].values[0]
+      yac *= defense_relative_yac
+      if targets > 20:
+          yac *= relative_yac
 
-  def compute_carry_yards(self):
-      return self.rush_model.sample(n_samples=1)[0]
+      return yac[0]
+
+
+
+
+  def compute_carry_yards(self, carrier):
+
+      carries = carrier["carries"].values[0]
+      # TODO: Sample more and keep the largest to simulate big carries for backs who get them.
+      yards = self.rush_model.sample(n_samples=1)[0]
+      # Come up with a way to handle small sample high yac players
+
+      relative_ypc = carrier["relative_ypc"].values[0]
+      defense_relative_ypc = self.get_def_team_stats()["defense_relative_ypc"].values[0]
+      yards *= defense_relative_ypc
+      if carries > 80:
+          yards *= relative_ypc
+
+      return yards[0]
+
 
   def punt(self):
       punt_distance = 45
@@ -204,28 +283,51 @@ class GameState:
       self.yds_to_go = 10
 
   def field_goal(self):
-       model_input = [self.home_score - self.away_score, self.sec_remaining, self.quarter, self.yard_line+17]
-       base_probs = self.field_goal_model.predict_proba([model_input])[0]
-       good = random.choices(self.field_goal_model.classes_, weights=base_probs, k=1)[0]
-       if good:
-           if self.posteam == self.home_team:
+      kicking_yards = self.yard_line + 17
+      model_input = [self.home_score - self.away_score, self.sec_remaining, self.quarter, kicking_yards]
+      base_probs = self.field_goal_model.predict_proba([model_input])[0]
+      good = random.choices(self.field_goal_model.classes_, weights=base_probs, k=1)[0]
+      if good:
+          k = self.choose_kicker()
+          k_id = k["player_name"].values[0]
+          if kicking_yards <= 39:
+              self.fantasy_points[k_id] += 3
+          elif kicking_yards <= 49:
+              self.fantasy_points[k_id] += 4
+          else:
+              self.fantasy_points[k_id] += 5
+
+          if self.posteam == self.home_team:
               self.home_score += 3
-           else:
+          else:
               self.away_score += 3
-           print("Field Goal is Good!")
-           self.kickoff()
-       else:
-           self.turnover_on_downs()
+          self.kickoff()
+      else:
+          self.turnover_on_downs()
 
 
 
-  def get_pos_stats(self):
+  def get_pos_player_stats(self):
       if self.posteam == self.home_team:
           return self.home_player_stats
       else:
           return self.away_player_stats
 
+  def get_pos_team_stats(self):
+      if self.posteam == self.home_team:
+          return self.home_team_stats
+      else:
+          return self.away_team_stats
+
+  def get_def_team_stats(self):
+      if self.posteam == self.home_team:
+          return self.away_team_stats
+      else:
+          return self.home_team_stats
+
   def is_complete(self, air_yards):
+      COMPLETE_INDEX = 1
+      INCOMPLETE_INDEX = 0
       # Baseline -- Use a logistic regression model to choose a playtype.
       model_input = [
           self.down,
@@ -234,7 +336,18 @@ class GameState:
           air_yards]
 
       base_probs = self.completion_model.predict_proba([model_input])[0]
+
       # Adjust probabilities for team trends
+      defense_cpoe = self.get_def_team_stats()["defense_cpoe"].values[0] / 100.0
+      base_probs[COMPLETE_INDEX] += defense_cpoe
+      base_probs[INCOMPLETE_INDEX] -= defense_cpoe
+
+      # Adjust the completion probability for the active quarterback.
+      qb = self.choose_quarterback()
+      qb_cpoe = qb["cpoe"].values[0] / 100.0
+      base_probs[COMPLETE_INDEX] += qb_cpoe
+      base_probs[INCOMPLETE_INDEX] -= qb_cpoe
+
       complete = random.choices(self.completion_model.classes_, weights=base_probs, k=1)[0]
 
       return complete
