@@ -5,8 +5,9 @@ import matplotlib.pyplot as plt
 import score
 import warnings
 import numpy as np
+from dateutil.parser import parse
 from engine import game
-from stats import players, teams
+from stats import players, teams, injuries
 from models import kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
@@ -76,17 +77,24 @@ def build_player_id_map(data):
 
     return all_players
 
-# Projects the next week's estimated fantasy points.
-
-# To produce anything, I have this set only to 2021. However, this will be refactored.
+# Projects the a given week's estimated fantasy points.
 def project_week(player_stats, team_stats, week):
     schedules = nfl_data_py.import_schedules([2021])
     schedules = schedules.loc[schedules.week == week]
+    inj_data = injuries.get_injury_data(2021, week)
+    inj_data["exp_return"] = pd.to_datetime(inj_data["exp_return"])
     all_projections = []
     for i, row in schedules.iterrows():
+        print("Modifying rosters due to anticipated injury.")
+        gameday = row.gameday
+        valid_injuries = inj_data.loc[inj_data.exp_return > parse(gameday)]
+        injured_ids = valid_injuries["gsis_id"].to_list()
+        player_stats = player_stats.loc[~player_stats.player_id.isin(injured_ids)]
+
         print("Projecting %s at %s" % (row.away_team, row.home_team))
+
         projections = []
-        for i in range(50):
+        for i in range(1000):
             projections.append(project_game(player_stats, team_stats, row.home_team, row.away_team, week))
 
         df = pd.DataFrame(projections).transpose()
@@ -104,6 +112,7 @@ def project_game(player_stats, team_stats, home, away, week):
 
 
     # Get all the injuries for a team
+
     # injuries = injuries.loc[injuries.week == week]
     # injuries = injuries[injuries["team"].isin([home,away])]
     # injuries = injuries[injuries["report_status"].isin(["Out"])]
@@ -137,7 +146,7 @@ if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
-
+    week = 10
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()
@@ -146,7 +155,7 @@ if __name__ == '__main__':
     # weekly_stats = players.calculate_weekly(weekly_team_stats)
 
     # Generate all week 10 Projection Data
-    projection_data = project_week(player_stats, team_stats, 10).reset_index()
+    projection_data = project_week(player_stats, team_stats, week).reset_index()
     projection_data = projection_data.rename(columns={"index": "player_name"})
 
     # Plot projections, sorted by median
@@ -163,7 +172,7 @@ if __name__ == '__main__':
     projection_data = projection_data.assign(percentile_75=percentile_75)
     projection_data = projection_data.assign(percentile_90=percentile_90)
     projection_data = projection_data.sort_values(by="median",ascending=False)[["player_name", "percentile_10", "percentile_25", "median", "percentile_75", "percentile_90"]]
-    projection_data.to_csv("projections_week_10_v3.csv")
+    projection_data.to_csv("projections_week_%s_v4.csv" % week)
     plt.boxplot(projection_data.head(30), vert=False)
     plt.show()
 
