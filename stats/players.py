@@ -6,7 +6,10 @@ def calculate(team_stats):
 
     YEARS = [2021]
     data = loader.load_data(YEARS)
-    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
+    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
+    lg_avg_ypc = data["rushing_yards"].mean()
+    lg_avg_yac = data["yards_after_catch"].mean()
+    #lg_big_carry_percentage = data.loc[data.rushing_yards >= 10].size() / data["rushing_yards"].size()
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
 
     receiver_targets = data.groupby("receiver_player_id")\
@@ -18,13 +21,16 @@ def calculate(team_stats):
     receiver_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby("receiver_player_id").size()\
         .sort_values().to_frame(name='red_zone_targets').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
+    receiver_checkdown_targets = data.loc[data.air_yards < 0].groupby("receiver_player_id").size()\
+        .sort_values().to_frame(name="checkdown_targets").reset_index()\
+        .rename(columns={'receiver_player_id': 'player_id'})
     receiver_air_yards = data.groupby("receiver_player_id")["air_yards"].sum()\
         .sort_values().to_frame(name='air_yards').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
     receiver_air_yards_per_target = data.groupby("receiver_player_id")["air_yards"].mean() \
         .sort_values().to_frame(name='air_yards_per_target').reset_index() \
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_yac = data.groupby("receiver_player_id")["yards_after_catch"].sum().sort_values()\
+    receiver_yac = data.groupby("receiver_player_id")["yards_after_catch"].mean().sort_values()\
         .to_frame(name='yac').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
     receiver_yac_oe = data.groupby("receiver_player_id")["yac_oe"].sum().sort_values()\
@@ -47,7 +53,7 @@ def calculate(team_stats):
     pass_attempts = data.groupby("passer_player_id").size() \
         .to_frame(name="pass_attempts").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
-    kick_attempts = data.groupby("kicker_player_id").size() \
+    kick_attempts = data.loc[data.field_goal_attempt == True].groupby("kicker_player_id").size() \
         .to_frame(name="kick_attempts").reset_index() \
         .rename(columns={'kicker_player_id': 'player_id'})
     all_players = build_player_id_map(data)
@@ -55,6 +61,7 @@ def calculate(team_stats):
     offense_stats = receiver_targets\
         .merge(receiver_deep_targets,how="outer",on="player_id")\
         .merge(receiver_red_zone_targets,how="outer", on="player_id")\
+        .merge(receiver_checkdown_targets,how="outer", on="player_id")\
         .merge(receiver_air_yards,how="outer", on="player_id") \
         .merge(receiver_air_yards_per_target, how="outer", on="player_id") \
         .merge(receiver_yac, how="outer", on="player_id") \
@@ -67,6 +74,8 @@ def calculate(team_stats):
         .merge(pass_attempts, how="outer", on="player_id")\
         .merge(kick_attempts, how="outer", on="player_id")
     offense_stats['big_carry_percentage'] = offense_stats["big_carries"] / offense_stats["carries"]
+    #offense_stats['relative_big_carry_percentage'] = offense_stats['big_carry_percentage'] / lg_big_carry_percentage
+    offense_stats['checkdown_percentage'] = offense_stats["checkdown_targets"] / offense_stats["targets"]
 
 
     # Set metadata
@@ -78,6 +87,8 @@ def calculate(team_stats):
     offense_stats['carry_percentage'] = offense_stats.apply(lambda row: row["carries"] / row["carries_team"], axis=1)
     offense_stats['red_zone_target_percentage'] = offense_stats.apply(lambda row: row["red_zone_targets"] / row["red_zone_targets_team"], axis=1)
     offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
+    offense_stats['relative_ypc'] = offense_stats["yards_per_carry"] / lg_avg_ypc
+    offense_stats['relative_yac'] = offense_stats["yac"] / lg_avg_yac
 
     # Compute team relative stats like target % and carry %
     #offense_stats['target_percentage'] = offense_stats.apply(lambda row: row["targets"] / team_stats.loc[team_stats["team"] == row["team_name"]])
@@ -89,7 +100,7 @@ def calculate(team_stats):
 def calculate_weekly(weekly_team_stats):
     YEARS = [2021]
     data = loader.load_data(YEARS)
-    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
+    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
     all_players = build_player_id_map(data)
     all_teams = build_player_team_map(data)
     weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
@@ -115,6 +126,7 @@ def calculate_weekly(weekly_team_stats):
     weekly_stats = weekly_stats.merge(weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"])
     weekly_stats['target_percentage_wk'] = weekly_stats.apply(lambda row: row["targets_wk"] / row["targets_wk_team"], axis=1)
     weekly_stats['carry_percentage_wk'] = weekly_stats.apply(lambda row: row["carries_wk"] / row["carries_wk_team"], axis=1)
+    offense_stats['relative_yards_per_carry_wk'] = offense_stats.apply(lambda row: row["yards_per_carry"] / lg_avg_ypc)
     weekly_stats['player_name'] = weekly_stats.apply(lambda row: all_players[row['player_id']], axis=1)
 
     weekly_stats.to_csv("weekly_stats.csv")
@@ -130,6 +142,8 @@ def build_player_id_map(data):
             all_players[row.receiver_player_id] = row.receiver_player_name
         if row.rusher_player_id not in all_players:
             all_players[row.rusher_player_id] = row.rusher_player_name
+        if row.kicker_player_id not in all_players:
+            all_players[row.kicker_player_id] = row.kicker_player_name
 
     return all_players
 
@@ -143,5 +157,7 @@ def build_player_team_map(data):
             player_teams[row.receiver_player_id] = row.posteam
         if row.rusher_player_id not in player_teams:
             player_teams[row.rusher_player_id] = row.posteam
+        if row.kicker_player_id not in player_teams:
+            player_teams[row.kicker_player_id] = row.posteam
 
     return player_teams

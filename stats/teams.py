@@ -5,7 +5,8 @@ def calculate():
     YEARS = [2021]
     data = loader.load_data(YEARS)
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
-
+    lg_avg_ypc = data["rushing_yards"].mean()
+    lg_avg_yac = data["yards_after_catch"].mean()
 
     pass_happiness_offense = data.groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="offense_pass_oe").reset_index()\
@@ -19,6 +20,8 @@ def calculate():
     total_relevant_snaps_offense = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby("posteam")\
         .size().sort_values().to_frame(name="offense_snaps").reset_index()\
         .rename(columns={'posteam': 'team'})
+    dropbacks = data.loc[(data.play_type.isin(['pass']))].groupby("posteam").size().sort_values().to_frame(name="dropbacks")\
+         .reset_index().rename(columns={'posteam': 'team'})
     total_relevant_snaps_defense = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "defteam").size().sort_values().to_frame(name="defense_snaps").reset_index()\
         .rename(columns={'defteam': 'team'})
@@ -79,6 +82,7 @@ def calculate():
         .merge(goal_line_pass_happiness_offense, on="team")\
         .merge(total_relevant_snaps_offense, on="team")\
         .merge(total_relevant_snaps_defense, on="team")\
+        .merge(dropbacks, on="team")\
         .merge(yac_over_expected, on="team")\
         .merge(mean_yac, on="team") \
         .merge(mean_cpoe, on="team") \
@@ -100,6 +104,9 @@ def calculate():
     team_stats['defense_pen_rate'] = (team_stats['defense_tfl'] + team_stats['defense_sacks']) / team_stats['defense_snaps']
     team_stats['offense_hold_rate'] = team_stats['offense_holds_drawn'] / team_stats['offense_snaps']
     team_stats['defense_hold_rate'] = team_stats['defense_holds_drawn'] / team_stats['defense_snaps']
+    team_stats['offense_sacks_per_dropback'] = team_stats["offense_sacks"] / team_stats["dropbacks"]
+    team_stats['defense_relative_ypc'] = team_stats["defense_ypc"] / lg_avg_ypc
+    team_stats['defense_relative_yac'] = team_stats["defense_yac"] / lg_avg_yac
 
     team_stats.to_csv("team_stats.csv")
     return team_stats

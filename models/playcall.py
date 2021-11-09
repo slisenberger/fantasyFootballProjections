@@ -58,6 +58,6 @@ def build_playcall_model():
 
     # Train a model
     logreg = LogisticRegression(max_iter=10000)
-    logreg.fit(X_train, Y_train)
+    logreg.fit(X_train.values, Y_train.values)
     print(logreg.score(X_test, Y_test))
     return logreg
