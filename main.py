@@ -1,10 +1,10 @@
-# This is a sample Python script.
+
 import nfl_data_py
 import pandas as pd
 import score
 from engine import game
 from stats import players, teams
-from models import kicking, playcall, receivers
+from models import kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
 # The Hello World will be correctly plotting the leaders in fantasy points for week 4. This ensures two goals:
@@ -20,7 +20,7 @@ def calculate_fantasy_leaders():
 
         data = data.append(i_data, sort=True)
 
-    week_four = data.loc[data.week == 8]
+    week_four = data.loc[data.week == 9]
     all_players = build_player_id_map(week_four)
     scores = defaultdict(float)
 
@@ -94,18 +94,23 @@ def project_game(player_stats, team_stats, home, away, week):
     injuries = injuries.loc[injuries.week == week]
     injuries = injuries[injuries["team"].isin([home,away])]
     injuries = injuries[injuries["report_status"].isin(["Out"])]
-    print("players ruled out: \n\n%s" % injuries[["full_name","gsis_id"]])
+    # print("players ruled out: \n\n%s" % injuries[["full_name","gsis_id"]])
 
-    print("fantasy relevant players in this game:")
+    # print("fantasy relevant players in this game:")
     rosters = rosters[rosters["team"].isin([home,away])]
     rosters = rosters[rosters["position"].isin(["RB", "WR", "TE", "QB"])]
-    print(rosters)
+    #print(rosters)
 
     # Here's all data about the players:
-    game_stats = player_stats[player_stats["team"].isin([home, away])]
-    print(game_stats[["player_name", "cpoe"]])
-    game_machine = game.GameState(home, away)
-    pass
+    home_player_stats = player_stats[player_stats["team"].isin([home])]
+    away_player_stats = player_stats[player_stats["team"].isin([away])]
+    home_team_stats = team_stats[team_stats["team"].isin([home])]
+    away_team_stats = team_stats[team_stats["team"].isin([home])]
+
+    # print("Home team stats:\n %s" % home_player_stats[["player_name", "cpoe", "pass_attempts"]])
+    # print("Away team stats:\n %s" % away_player_stats[["player_name", "cpoe", "pass_attempts"]])
+    game_machine = game.GameState(home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
+    game_machine.play_game()
 
 
 
@@ -113,18 +118,20 @@ def project_game(player_stats, team_stats, home, away, week):
 # Press the green button in the gutter to run the script.
 if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
-    #load_and_clean_data()
-    #calculate_fantasy_leaders()
+    # load_and_clean_data()
+    # calculate_fantasy_leaders()
 
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()
+    weekly_team_stats = teams.calculate_weekly()
     player_stats = players.calculate(team_stats)
-    # calculate_fantasy_leaders()
-    playcall_model = playcall.build_or_load_playcall_model()
-    kick_model = kicking.build_or_load_kicking_model()
-    yac_model = receivers.build_or_load_yac_kde()
-    air_yards_model = receivers.build_or_load_air_yards_kde()
+    weekly_stats = players.calculate_weekly(weekly_team_stats)
+    # playcall_model = playcall.build_or_load_playcall_model()
+    # kick_model = kicking.build_or_load_kicking_model()
+    # yac_model = receivers.build_or_load_yac_kde()
+    # rush_model = rushers.build_or_load_rush_kde()
+    # air_yards_model = receivers.build_or_load_air_yards_kde()
 
     project_week(player_stats, team_stats, 9)
 

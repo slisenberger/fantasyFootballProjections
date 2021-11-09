@@ -1,13 +1,9 @@
 import pandas as pd
+from stats import loader
 # Calculate 2021 team statistics that are used to determine tendencies.
 def calculate():
     YEARS = [2021]
-    data = pd.DataFrame()
-    for i in YEARS:
-        i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
-                             compression='gzip', low_memory=False)
-
-        data = data.append(i_data, sort=True)
+    data = loader.load_data(YEARS)
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
 
 
@@ -107,3 +103,17 @@ def calculate():
 
     team_stats.to_csv("team_stats.csv")
     return team_stats
+
+def calculate_weekly():
+    YEARS = [2021]
+    data = loader.load_data(YEARS)
+    targets_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+        ["posteam", "week"])["receiver_player_id"].count().sort_values().to_frame(name="targets_wk").reset_index()\
+        .rename(columns={'posteam': 'team'})
+    carries_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+        ["posteam", "week"])["rusher_player_id"].count().sort_values().to_frame(name="carries_wk").reset_index()\
+        .rename(columns={'posteam': 'team'})
+
+    weekly_data = targets_weekly.merge(carries_weekly, on=["team", "week"])
+    print(weekly_data)
+    return weekly_data
