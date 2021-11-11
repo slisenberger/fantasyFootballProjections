@@ -12,9 +12,11 @@ def calculate():
     pass_happiness_offense = data.groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="offense_pass_oe").reset_index()\
         .rename(columns={'posteam': 'team'})
+    pass_happiness_offense_est = compute_offense_poe_estimator(data)
     pass_suppression_defense = data.groupby("defteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="defense_pass_oe").reset_index()\
         .rename(columns={'defteam': 'team'})
+    pass_suppression_defense_est = compute_defense_poe_estimator(data)
     goal_line_pass_happiness_offense = data.loc[data.yardline_100 <= 10].groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="goal_offense_pass_oe").reset_index()\
         .rename(columns={'posteam': 'team'})
@@ -35,6 +37,7 @@ def calculate():
     mean_cpoe = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "defteam")["cpoe"].mean().sort_values().to_frame(name="defense_cpoe").reset_index() \
         .rename(columns={'defteam': 'team'})
+    cpoe_est = compute_defense_cpoe_estimator(data)
     mean_air_yards = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "defteam")["air_yards"].mean().sort_values().to_frame(name="defense_air_yards").reset_index() \
         .rename(columns={'defteam': 'team'})
@@ -79,7 +82,9 @@ def calculate():
         .rename(columns={'posteam': 'team'})
 
     team_stats = pass_happiness_offense\
-        .merge(pass_suppression_defense, on="team")\
+        .merge(pass_happiness_offense_est, on="team") \
+        .merge(pass_suppression_defense, on="team") \
+        .merge(pass_suppression_defense_est, on="team") \
         .merge(goal_line_pass_happiness_offense, on="team")\
         .merge(total_relevant_snaps_offense, on="team")\
         .merge(total_relevant_snaps_defense, on="team")\
@@ -87,6 +92,7 @@ def calculate():
         .merge(yac_over_expected, on="team")\
         .merge(mean_yac, on="team") \
         .merge(mean_cpoe, on="team") \
+        .merge(cpoe_est, on="team") \
         .merge(mean_air_yards, on="team") \
         .merge(mean_ypc, on="team")\
         .merge(targets, on="team")\
@@ -125,3 +131,36 @@ def calculate_weekly():
 
     weekly_data = targets_weekly.merge(carries_weekly, on=["team", "week"])
     return weekly_data
+
+def compute_offense_poe_estimator(data):
+    poe_prior = 0
+    # Use the last 1000 snap window
+    poe_span = 500
+    biased_poe = data.groupby(["posteam"])["pass_oe"].apply(lambda d: prepend(d, poe_prior)).to_frame()
+    poe_est = biased_poe.groupby(["posteam"])["pass_oe"].apply(lambda x: x.ewm(span=poe_span, adjust=False).mean()).to_frame()
+    poe_est_now = poe_est.groupby(["posteam"]).tail(1).reset_index().rename(columns={'posteam': 'team', 'pass_oe': 'offense_pass_oe_est'})[["team", "offense_pass_oe_est"]]
+    return poe_est_now
+
+def compute_defense_poe_estimator(data):
+    poe_prior = 0
+    # Use the last 1000 snap window
+    poe_span = 500
+    biased_poe = data.groupby(["defteam"])["pass_oe"].apply(lambda d: prepend(d, poe_prior)).to_frame()
+    poe_est = biased_poe.groupby(["defteam"])["pass_oe"].apply(lambda x: x.ewm(span=poe_span, adjust=False).mean()).to_frame()
+    poe_est_now = poe_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'pass_oe': 'defense_pass_oe_est'})[["team", "defense_pass_oe_est"]]
+    return poe_est_now
+
+def compute_defense_cpoe_estimator(data):
+    cpoe_prior = 0
+    # Use the last 500 pass window to judge completion.
+    cpoe_span = 500
+    biased_cpoe = data.groupby(["defteam"])["cpoe"].apply(lambda d: prepend(d, cpoe_prior)).to_frame()
+    cpoe_est = biased_cpoe.groupby(["defteam"])["cpoe"].apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean()).to_frame()
+    cpoe_est_now = cpoe_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'cpoe': 'defense_cpoe_est'})[["team", "defense_cpoe_est"]]
+    return cpoe_est_now
+
+def prepend(df, val):
+    df.loc[-1] = val
+    df.index = df.index + 1
+    df = df.sort_index()
+    return df

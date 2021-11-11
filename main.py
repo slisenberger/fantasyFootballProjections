@@ -9,7 +9,7 @@ import numpy as np
 import os
 from dateutil.parser import parse
 from engine import game
-from stats import players, teams, injuries
+from stats import players, teams, injuries, loader
 from models import kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
@@ -47,24 +47,7 @@ def calculate_fantasy_leaders():
 
 
 
-def load_and_clean_data():
-    import pandas as pd
 
-    pd.options.mode.chained_assignment = None
-
-    # Enter desired years of data. Data goes back to '99, but we don't need
-    # to update it.
-    YEARS = [2021]
-
-    for i in YEARS:
-        # Link to data repo
-        link = 'https://github.com/guga31bb/nflfastR-data/blob/master/data/play_by_play_' + str(i) + '.csv.gz?raw=true'
-        # Read in CSV
-        data = pd.read_csv(link, compression='gzip', low_memory=False)
-        # Filter to regular season data only
-        data = data.loc[data.season_type == 'REG']
-        # Output cleaned, compressed CSV to current directory
-        data.to_csv('data/pbp_' + str(i) + '.csv.gz', index=False, compression='gzip')
 
 def build_player_id_map(data):
     all_players = {}
@@ -129,13 +112,36 @@ def project_game(player_stats, team_stats, home, away, week):
     return game_machine.play_game()
 
 
+# Returns the projection results for a single week and year.
+def project(data, week, year, n_projections):
+    team_stats = teams.calculate(data, week, year)
+    player_stats = players.calculate(data, week, year, team_stats)
+    projection_data = project_week(player_stats, team_stats, year, week, n_projections).reset_index()
+    projection_data = projection_data.rename(columns={"index": "player_id"})
+
+    projection_data = projection_data.fillna(0)
+    median = projection_data.median(axis=1)
+    percentile_10 = projection_data.quantile(.1, axis=1)
+    percentile_25 = projection_data.quantile(.25, axis=1)
+    percentile_75 = projection_data.quantile(.75, axis=1)
+    percentile_90 = projection_data.quantile(.9, axis=1)
+    projection_data = projection_data.assign(median=median)
+    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "player_name", "team"])
+    projection_data = projection_data.merge(roster_data, on="player_id", how="left")
+    projection_data = projection_data.sort_values(by="median", ascending=False)[
+        ["player_id", "player_name", "team", "position", "percentile_10", "percentile_25", "median", "percentile_75",
+         "percentile_90"]]
 
 
-# Press the green button in the gutter to run the script.
+# The primary entry point for the program. Initializes the majority of necessary data.
 if __name__ == '__main__':
     # Quiet the deprecation warnings in the command line a little.
     warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
+    # injuries.clean_and_save_data()
+    # Get full datasets for pbp and injuries and rosters for future joining.
+    # pbp_data = loader.load_data([2016, 2017, 2018, 2019, 2020, 2021])
+
 
     # This doesn't always need to be done. would like to run this on a cron schedule.
     # load_and_clean_data()
