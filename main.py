@@ -1,10 +1,12 @@
 
 import nfl_data_py
 import pandas as pd
+import random
 import matplotlib.pyplot as plt
 import score
 import warnings
 import numpy as np
+import os
 from dateutil.parser import parse
 from engine import game
 from stats import players, teams, injuries
@@ -78,45 +80,37 @@ def build_player_id_map(data):
     return all_players
 
 # Projects the a given week's estimated fantasy points.
-def project_week(player_stats, team_stats, week):
+def project_week(player_stats, team_stats, week, n):
     schedules = nfl_data_py.import_schedules([2021])
     schedules = schedules.loc[schedules.week == week]
     inj_data = injuries.get_injury_data(2021, week)
-    inj_data["exp_return"] = pd.to_datetime(inj_data["exp_return"])
     all_projections = []
     for i, row in schedules.iterrows():
-        print("Modifying rosters due to anticipated injury.")
         gameday = row.gameday
         valid_injuries = inj_data.loc[inj_data.exp_return > parse(gameday)]
-        injured_ids = valid_injuries["gsis_id"].to_list()
-        player_stats = player_stats.loc[~player_stats.player_id.isin(injured_ids)]
 
         print("Projecting %s at %s" % (row.away_team, row.home_team))
 
         projections = []
-        for i in range(1000):
+        for i in range(n):
+            # Automatically make questionable players start.
+            # TODO: give questionable players a fractional chance to miss
+            q_adjusted_injuries = valid_injuries.loc[~valid_injuries.status.isin(["Questionable"])]
+            injured_ids = q_adjusted_injuries["player_id"].to_list()
+            player_stats = player_stats.loc[~player_stats.player_id.isin(injured_ids)]
             projections.append(project_game(player_stats, team_stats, row.home_team, row.away_team, week))
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
     proj_df = pd.concat(all_projections)
-    proj_df.to_csv("projections_week_10_player_aware.csv")
     return proj_df
+
 
 
 def project_game(player_stats, team_stats, home, away, week):
     # load rosters and injury information.
     # depth_charts = nfl_data_py.import_depth_charts([2021])
-    # injuries = nfl_data_py.import_injuries([2021])
     # rosters = nfl_data_py.import_rosters([2021], ["team", "player_name", "position", "player_id"])
-
-
-    # Get all the injuries for a team
-
-    # injuries = injuries.loc[injuries.week == week]
-    # injuries = injuries[injuries["team"].isin([home,away])]
-    # injuries = injuries[injuries["report_status"].isin(["Out"])]
-    # print("players ruled out: \n\n%s" % injuries[["full_name","gsis_id"]])
 
     # print("fantasy relevant players in this game:")
     # rosters = rosters[rosters["team"].isin([home,away])]
@@ -147,20 +141,18 @@ if __name__ == '__main__':
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
     week = 10
+    version = 13
+    n_projections = 1000
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()
-    # weekly_team_stats = teams.calculate_weekly()
     player_stats = players.calculate(team_stats)
-    # weekly_stats = players.calculate_weekly(weekly_team_stats)
 
     # Generate all week 10 Projection Data
-    projection_data = project_week(player_stats, team_stats, week).reset_index()
-    projection_data = projection_data.rename(columns={"index": "player_name"})
+    projection_data = project_week(player_stats, team_stats, week, n_projections).reset_index()
+    projection_data = projection_data.rename(columns={"index": "player_id"})
 
-    # Plot projections, sorted by median
-    meds = projection_data.median(axis=1)
-    meds.sort_values(ascending=False, inplace=True)
+    projection_data = projection_data.fillna(0)
     median = projection_data.median(axis=1)
     percentile_10 = projection_data.quantile(.1, axis=1)
     percentile_25 = projection_data.quantile(.25, axis=1)
@@ -171,8 +163,19 @@ if __name__ == '__main__':
     projection_data = projection_data.assign(percentile_25=percentile_25)
     projection_data = projection_data.assign(percentile_75=percentile_75)
     projection_data = projection_data.assign(percentile_90=percentile_90)
-    projection_data = projection_data.sort_values(by="median",ascending=False)[["player_name", "percentile_10", "percentile_25", "median", "percentile_75", "percentile_90"]]
-    projection_data.to_csv("projections_week_%s_v4.csv" % week)
-    plt.boxplot(projection_data.head(30), vert=False)
-    plt.show()
+    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "player_name", "team"])
+    projection_data = projection_data.merge(roster_data, on="player_id", how="left")
+    projection_data = projection_data.sort_values(by="median",ascending=False)[
+        ["player_id", "player_name", "team", "position", "percentile_10", "percentile_25", "median", "percentile_75",
+         "percentile_90"]]
 
+
+    projection_data.to_csv("projections_week_%s_v%s.csv" % (week, version))
+    base_path = os.path.join("projections/", "w%s_v%s_" % (week, version))
+    projection_data.to_csv(base_path + "all.csv")
+    projection_data.loc[projection_data.position == "QB"].to_csv(base_path +"qb.csv")
+    projection_data.loc[projection_data.position == "RB"].to_csv(base_path + "rb.csv")
+    projection_data.loc[projection_data.position == "WR"].to_csv(base_path + "wr.csv")
+    projection_data.loc[projection_data.position == "TE"].to_csv(base_path + "te.csv")
+    projection_data.loc[projection_data.position.isin(["RB", "WR", "TE"])].to_csv(base_path + "flex.csv")
+    projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
