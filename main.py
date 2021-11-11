@@ -8,6 +8,7 @@ import warnings
 import numpy as np
 import os
 from dateutil.parser import parse
+import datetime
 from engine import game
 from stats import players, teams, injuries, loader
 from models import kicking, completion, playcall, receivers, rushers
@@ -70,17 +71,19 @@ def project_week(player_stats, team_stats, week, n):
     all_projections = []
     for i, row in schedules.iterrows():
         gameday = row.gameday
-        valid_injuries = inj_data.loc[inj_data.exp_return > parse(gameday).date()]
+        gameday_time = datetime.datetime.fromordinal(parse(gameday).date().toordinal())
 
+        valid_injuries = inj_data.loc[
+            inj_data.exp_return > gameday_time]
+
+        # TODO: give questionable players a fractional chance to miss
+        injured_ids = valid_injuries["player_id"].to_list()
         print("Projecting %s at %s" % (row.away_team, row.home_team))
+        print("This game has %s injuries relevant at its start time" % len(injured_ids))
 
         projections = []
         for i in range(n):
-            # Automatically make questionable players start.
-            # TODO: give questionable players a fractional chance to miss
-            # q_adjusted_injuries = valid_injuries.loc[~valid_injuries.status.isin(["Questionable"])]
-            # injured_ids = q_adjusted_injuries["player_id"].to_list()
-            injured_ids = valid_injuries["player_id"].to_list()
+
             player_stats = player_stats.loc[~player_stats.player_id.isin(injured_ids)]
             projections.append(project_game(player_stats, team_stats, row.home_team, row.away_team, week))
 
@@ -149,7 +152,7 @@ if __name__ == '__main__':
     #calculate_fantasy_leaders(9)
     week = 10
     version = 13
-    n_projections = 10
+    n_projections = 1000
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()

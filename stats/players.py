@@ -224,14 +224,10 @@ def compute_carry_percentage(row):
 
 def get_weekly_injuries():
     injured = ["IR", "IR-R", "IR-PUP", "IR-NFI", "Suspended", "COVID-IR", "Out"]
-    all_injuries = injuries.get_season_injury_data(2021)
+    all_injuries = injuries.load_historical_data([2021])
     all_injuries = all_injuries.loc[all_injuries["status"].isin(injured)]
     all_injuries = all_injuries.assign(available=False)
     return all_injuries[["week", "player_id", "available"]]
-    print(all_injuries)
-    all_injuries.to_csv("all_injuries.csv")
-    return all_injuries
-
 
 
 def weekly_target_share_estimator(weekly_data):
