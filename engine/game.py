@@ -238,8 +238,8 @@ class GameState:
 
     base_probs = self.playcall_model.predict_proba([model_input])[0]
     # Adjust probabilities for team trends
-    defense_pass_oe = self.get_def_team_stats()["defense_pass_oe"].values[0] / 100.0
-    offense_pass_oe = self.get_pos_team_stats()["offense_pass_oe"].values[0] / 100.0
+    defense_pass_oe = self.get_def_team_stats()["defense_pass_oe_est"].values[0] / 100.0
+    offense_pass_oe = self.get_pos_team_stats()["offense_pass_oe_est"].values[0] / 100.0
     base_probs[PASS_INDEX] += defense_pass_oe
     base_probs[PASS_INDEX] += offense_pass_oe
     base_probs[RUN_INDEX] -= defense_pass_oe
