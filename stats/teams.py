@@ -62,8 +62,14 @@ def calculate():
     def_sacks = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "defteam")["sack"].sum().sort_values().to_frame(name="defense_sacks").reset_index()\
         .rename(columns={'defteam': 'team'})
+    def_qb_hits = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+        "defteam")["qb_hit"].sum().sort_values().to_frame(name="defense_qb_hits").reset_index() \
+        .rename(columns={'defteam': 'team'})
     off_sacks = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "posteam")["sack"].sum().sort_values().to_frame(name="offense_sacks").reset_index() \
+        .rename(columns={'posteam': 'team'})
+    off_qb_hits = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+        "posteam")["qb_hit"].sum().sort_values().to_frame(name="offense_qb_hits").reset_index() \
         .rename(columns={'posteam': 'team'})
     def_tfl = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         "defteam")["tackled_for_loss"].sum().sort_values().to_frame(name="defense_tfl").reset_index() \
@@ -101,17 +107,20 @@ def calculate():
         .merge(red_zone_carries, on="team")\
         .merge(deep_targets, on="team")\
         .merge(def_sacks, on="team")\
+        .merge(def_qb_hits, on="team")\
         .merge(off_sacks, on="team")\
+        .merge(off_qb_hits, on="team")\
         .merge(def_tfl, on="team")\
         .merge(off_tfl, on="team")\
         .merge(def_holds_drawn, on="team")\
         .merge(off_holds_drawn, on="team")
 
-    team_stats['offense_pen_rate'] = (team_stats['offense_tfl'] + team_stats['offense_sacks']) / team_stats['offense_snaps']
-    team_stats['defense_pen_rate'] = (team_stats['defense_tfl'] + team_stats['defense_sacks']) / team_stats['defense_snaps']
+    team_stats['offense_pen_rate'] = (team_stats['offense_tfl'] + team_stats['offense_qb_hits']) / team_stats['offense_snaps']
+    team_stats['defense_pen_rate'] = (team_stats['defense_tfl'] + team_stats['defense_qb_hits']) / team_stats['defense_snaps']
     team_stats['offense_hold_rate'] = team_stats['offense_holds_drawn'] / team_stats['offense_snaps']
     team_stats['defense_hold_rate'] = team_stats['defense_holds_drawn'] / team_stats['defense_snaps']
     team_stats['offense_sacks_per_dropback'] = team_stats["offense_sacks"] / team_stats["dropbacks"]
+    team_stats["offense_qb_hits_per_dropback"] = team_stats["offense_qb_hits"] / team_stats["dropbacks"]
     team_stats['defense_relative_ypc'] = team_stats["defense_ypc"] / lg_avg_ypc
     team_stats['defense_relative_yac'] = team_stats["defense_yac"] / lg_avg_yac
     team_stats['defense_relative_air_yards'] = team_stats["defense_air_yards"] / lg_avg_air_yards

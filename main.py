@@ -140,8 +140,8 @@ if __name__ == '__main__':
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
     week = 10
-    version = 13
-    n_projections = 1000
+    version = 14
+    n_projections = 10
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()
