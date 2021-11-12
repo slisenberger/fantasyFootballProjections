@@ -10,7 +10,8 @@ import os
 from dateutil.parser import parse
 import datetime
 from engine import game
-from stats import players, teams, injuries, loader
+from stats import players, teams, injuries
+from data import loader
 from models import kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
@@ -140,8 +141,9 @@ if __name__ == '__main__':
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
     week = 10
-    version = 14
-    n_projections = 10
+    version = 15
+    n_projections = 20
+    receivers.build_or_load_all_air_yards_kdes()
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()

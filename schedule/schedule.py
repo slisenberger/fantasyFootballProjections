@@ -1,1 +1,0 @@
-# Convert between Week/Year format and a linear index.

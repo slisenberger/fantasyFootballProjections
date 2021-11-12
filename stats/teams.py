@@ -1,5 +1,7 @@
 import pandas as pd
-from stats import loader
+from data import loader
+
+
 # Calculate 2021 team statistics that are used to determine tendencies.
 def calculate():
     YEARS = [2021]
