@@ -2,9 +2,13 @@ import pandas as pd
 import numpy as np
 import nfl_data_py
 from collections import defaultdict
-from stats import loader, injuries, teams
+from stats import injuries, teams
+from data import loader
 
 # Calculate statistics about players
+from stats.util import prepend
+
+
 def calculate(team_stats):
 
     YEARS = [2021]
@@ -165,11 +169,7 @@ def compute_yac_estimator(data):
 
 
 
-def prepend(df, val):
-    df.loc[-1] = val
-    df.index = df.index + 1
-    df = df.sort_index()
-    return df
+
 
 def calculate_weekly(weekly_team_stats):
     YEARS = [2021]
@@ -286,3 +286,4 @@ def build_player_team_map(data):
             player_teams[row.kicker_player_id] = row.posteam
 
     return player_teams
+

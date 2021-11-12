@@ -29,6 +29,7 @@ class GameState:
       # The models used to inform probabilities and choices.
       self.playcall_model = models.playcall.build_or_load_playcall_model()
       self.yac_model = models.receivers.build_or_load_yac_kde()
+      self.air_yards_models = models.receivers.build_or_load_all_air_yards_kdes()
       self.air_yards_model = models.receivers.build_or_load_air_yards_kde()
       self.rush_model = models.rushers.build_or_load_rush_kde()
       self.completion_model = models.completion.build_or_load_completion_model()
@@ -72,6 +73,7 @@ class GameState:
 
   def advance_snap(self):
     playcall = self.choose_playcall()
+    is_complete = False
     yards = 0
     td = False
     sack = False
@@ -156,7 +158,7 @@ class GameState:
             # TODO: model this
               self.fantasy_points[k_id] += 1
 
-    self.advance_clock(playcall, is_complete)
+    self.advance_clock(playcall, sack, is_complete)
 
   def extra_point(self):
       # Arbitrary value chosen from google. In future, compute this from lg avg or model.
@@ -193,13 +195,25 @@ class GameState:
 
   # Manage the clock after a play. This is very unsophisticated.
   # Areas of improvement:
-  # - Modeling getting out of bounds
+  # - Modeling getting out of bounds in 4th quarter situations
   # - Modeling timeouts and hurry-up situations
-  def advance_clock(self, playcall, is_complete):
-      if playcall == "pass" and not is_complete:
-          self.sec_remaining -= 8
+  # - Modeling spikes and kneels
+  # - Modeling clock loss due to penalities
+  def advance_clock(self, playcall, sack, is_complete):
+      original_sec_remaining = self.sec_remaining
+      if playcall == "pass" and not is_complete and not sack:
+          self.sec_remaining -= 5
+      elif playcall == "field_goal":
+          self.sec_remaining -= 5
+      elif playcall == "punt":
+          self.sec_remaining -= 5
       else:
-          self.sec_remaining -= 35
+          self.sec_remaining -= 40
+
+      # Check for the 2 minute warning.
+      if self.quarter in [2,4] and (self.sec_remaining < 120 and original_sec_remaining > 120):
+          self.sec_remaining = 120
+      # Check for the end of quarters.
       if self.sec_remaining <= 0:
           if self.quarter == 2:
               self.half_time()
@@ -284,24 +298,20 @@ class GameState:
 
   def compute_air_yards(self, target):
       pos = target["position"].values[0]
-      samples = self.air_yards_model.sample(n_samples=2)
-      # Choose different air yards depending on position -- for RBs assume the lesser of the two. For WRs assume the greater of the 2.
-      # This can be modified to be more robust but the general aim is to change the distribution of passes for RBs to be
-      # More like checkdowns and for WRs to be more like regular passes.
-      # Gross code... just testing.. gotta be a better way.
-      s1 = samples[0][0]
-      s2 = samples[1][0]
-      defense_relative_air_yards = self.get_def_team_stats()["defense_relative_air_yards"].values[0]
-      if pos == "RB":
-          return min(s1, s2)
-      elif pos in ["WR", "TE"]:
-          # For WRs only, add a multiplier for their air yards based on what they actually see.
-          baseline = max(s1, s2)
-          baseline *= target["relative_air_yards_est"].values[0]
-          baseline *= defense_relative_air_yards
-          return baseline
+      # Use special position trained models at first, before adjusting.
+
+      if pos in self.air_yards_models.keys():
+        base = self.air_yards_models[pos].sample(n_samples=1)[0][0]
       else:
-          return random.choice([s1, s2])
+        base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
+
+      defense_relative_air_yards = self.get_def_team_stats()["defense_relative_air_yards"].values[0]
+      if pos in ["WR", "TE"]:
+          # For WR and TE, apply a multiplier to increase their ADOT.
+          base *= target["relative_air_yards_est"].values[0]
+          base *= defense_relative_air_yards
+
+      return base
 
   def compute_yac(self, target):
       yac = self.yac_model.sample(n_samples=1)[0]
