@@ -69,23 +69,20 @@ def project_week(player_stats, team_stats, week, n):
     schedules = schedules.loc[schedules.week == week]
     inj_data = injuries.get_injury_data(2021, week)
     all_projections = []
+    player_stats = player_stats.merge(inj_data[["player_id", "status", "exp_return"]], on="player_id", how="left")
     for i, row in schedules.iterrows():
-        gameday = row.gameday
-        gameday_time = datetime.datetime.fromordinal(parse(gameday).date().toordinal())
-
-        valid_injuries = inj_data.loc[
-            inj_data.exp_return > gameday_time]
+        gameday_time = datetime.datetime.fromordinal(parse(row.gameday).date().toordinal())
+        print("Projecting %s at %s" % (row.away_team, row.home_team))
 
         # TODO: give questionable players a fractional chance to miss
-        injured_ids = valid_injuries["player_id"].to_list()
-        print("Projecting %s at %s" % (row.away_team, row.home_team))
-        print("This game has %s injuries relevant at its start time" % len(injured_ids))
-
+        game_stats = player_stats.loc[player_stats.team.isin([row.home_team, row.away_team])]
+        out_players = game_stats.loc[game_stats.exp_return > gameday_time]
+        questionable_players = game_stats.loc[game_stats.exp_return <= gameday_time]
+        game_stats = game_stats.loc[~(game_stats.exp_return > gameday_time)]
         projections = []
         for i in range(n):
 
-            player_stats = player_stats.loc[~player_stats.player_id.isin(injured_ids)]
-            projections.append(project_game(player_stats, team_stats, row.home_team, row.away_team, week))
+            projections.append(project_game(game_stats, team_stats, row.home_team, row.away_team, week))
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
@@ -95,14 +92,6 @@ def project_week(player_stats, team_stats, week, n):
 
 
 def project_game(player_stats, team_stats, home, away, week):
-    # load rosters and injury information.
-    # depth_charts = nfl_data_py.import_depth_charts([2021])
-    # rosters = nfl_data_py.import_rosters([2021], ["team", "player_name", "position", "player_id"])
-
-    # print("fantasy relevant players in this game:")
-    # rosters = rosters[rosters["team"].isin([home,away])]
-    # rosters = rosters[rosters["position"].isin(["RB", "WR", "TE", "QB"])]
-    #print(rosters)
 
     # Here's all data about the players:
     home_player_stats = player_stats[player_stats["team"].isin([home])]
