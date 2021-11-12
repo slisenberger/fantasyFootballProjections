@@ -156,7 +156,7 @@ class GameState:
             # TODO: model this
               self.fantasy_points[k_id] += 1
 
-    self.advance_clock()
+    self.advance_clock(playcall, is_complete)
 
   def extra_point(self):
       # Arbitrary value chosen from google. In future, compute this from lg avg or model.
@@ -191,8 +191,15 @@ class GameState:
 
 
 
-  def advance_clock(self):
-      self.sec_remaining -= 25
+  # Manage the clock after a play. This is very unsophisticated.
+  # Areas of improvement:
+  # - Modeling getting out of bounds
+  # - Modeling timeouts and hurry-up situations
+  def advance_clock(self, playcall, is_complete):
+      if playcall == "pass" and not is_complete:
+          self.sec_remaining -= 8
+      else:
+          self.sec_remaining -= 35
       if self.sec_remaining <= 0:
           if self.quarter == 2:
               self.half_time()
