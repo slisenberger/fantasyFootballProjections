@@ -9,7 +9,7 @@ def calculate():
     data["yac_oe"] = data["yards_after_catch"] - data["xyac_mean_yardage"]
     lg_avg_ypc = data["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
-    lg_avg_air_yards = data["yards_after_catch"].mean()
+    lg_avg_air_yards = data["air_yards"].mean()
 
     pass_happiness_offense = data.groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="offense_pass_oe").reset_index()\

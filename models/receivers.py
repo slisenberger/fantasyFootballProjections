@@ -56,7 +56,7 @@ def build_or_load_wr_air_yards_kde(data):
     except FileNotFoundError:
         all_air_yards = data.loc[data.position == "WR"]["air_yards"].dropna()
         model = fit_kde(all_air_yards)
-        joblib.dump(model, rb_air_yards_model_name)
+        joblib.dump(model, wr_air_yards_model_name)
         return model
 
 def build_or_load_te_air_yards_kde(data):
@@ -69,7 +69,7 @@ def build_or_load_te_air_yards_kde(data):
         return model
 
 def receiver_data():
-    YEARS = [2016, 2017, 2018, 2019, 2020, 2021]
+    YEARS = [2017, 2018, 2019, 2020, 2021]
     data = pd.DataFrame()
     for i in YEARS:
         i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
@@ -79,7 +79,8 @@ def receiver_data():
         i_data = i_data.loc[~i_data.receiver_player_id.isnull()][["receiver_player_id", "air_yards"]]
         data = data.append(i_data, sort=True)
     data = data.rename(columns={'receiver_player_id': 'player_id'})
-    roster_data = nfl_data_py.import_rosters([2016, 2017, 2018, 2019, 2020, 2021], columns=["player_id", "position", "player_name"])
+    roster_data = nfl_data_py.import_rosters(
+        [2017, 2018, 2019, 2020, 2021], columns=["player_id", "position", "player_name"]).drop_duplicates()
     data = data.merge(roster_data, on="player_id", how="left")
     return data
 

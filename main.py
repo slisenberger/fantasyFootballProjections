@@ -98,10 +98,7 @@ def project_game(player_stats, team_stats, home, away, week):
     home_player_stats = player_stats[player_stats["team"].isin([home])]
     away_player_stats = player_stats[player_stats["team"].isin([away])]
     home_team_stats = team_stats[team_stats["team"].isin([home])]
-    away_team_stats = team_stats[team_stats["team"].isin([home])]
-
-    # print("Home team stats:\n %s" % home_player_stats[["player_name", "cpoe", "pass_attempts"]])
-    # print("Away team stats:\n %s" % away_player_stats[["player_name", "cpoe", "pass_attempts"]])
+    away_team_stats = team_stats[team_stats["team"].isin([away])]
     game_machine = game.GameState(home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
     return game_machine.play_game()
 
@@ -142,8 +139,7 @@ if __name__ == '__main__':
     #calculate_fantasy_leaders(9)
     week = 10
     version = 15
-    n_projections = 20
-    receivers.build_or_load_all_air_yards_kdes()
+    n_projections = 10
 
     # Create an easier way to identify players in fantasy
     team_stats = teams.calculate()
