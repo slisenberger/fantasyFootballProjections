@@ -1,5 +1,4 @@
 import random
-import models
 from collections import defaultdict
 
 
@@ -8,7 +7,7 @@ from collections import defaultdict
 # any sort of projection model we want.
 class GameState:
   """Representation of the Game Details of a football game, like down, quarter, and clock."""
-  def __init__(self, home_team, away_team, home_player_stats, away_player_stats, home_team_stats, away_team_stats):
+  def __init__(self, models, home_team, away_team, home_player_stats, away_player_stats, home_team_stats, away_team_stats):
       # Names of the participating teams
       self.home_team = home_team
       self.away_team = away_team
@@ -26,13 +25,18 @@ class GameState:
       # A representation of the yard line, where 0 is the home endzone and 100 is the away endzone
       self.yard_line = 50
 
-      # The models used to inform probabilities and choices.
-      self.playcall_model = models.playcall.build_or_load_playcall_model()
-      self.yac_model = models.receivers.build_or_load_yac_kde()
-      self.air_yards_models = models.receivers.build_or_load_all_air_yards_kdes()
-      self.rush_model = models.rushers.build_or_load_rush_kde()
-      self.completion_model = models.completion.build_or_load_completion_model()
-      self.field_goal_model = models.kicking.build_or_load_kicking_model()
+      self.completion_model = models["completion_model"]
+      self.field_goal_model = models["field_goal_model"]
+      self.playcall_model = models["playcall_model"]
+      self.yac_model = models["yac_model"]
+      self.air_yards_models = {
+          'RB': models["RB"],
+          'TE': models["TE"],
+          "WR": models["WR"],
+          "ALL": models["ALL"],
+      }
+      self.rush_model = models["rush_model"]
+
 
       self.game_over = False
 

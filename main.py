@@ -68,9 +68,41 @@ def build_player_id_map(data):
 def project_week(player_stats, team_stats, week, n):
     schedules = nfl_data_py.import_schedules([2021])
     schedules = schedules.loc[schedules.week == week]
+    # The models used to inform probabilities and choices.
+    m = {
+      'playcall_model': playcall.build_or_load_playcall_model(),
+      'yac_model': receivers.build_or_load_yac_kde(),
+      'rush_model': rushers.build_or_load_rush_kde(),
+      'completion_model': completion.build_or_load_completion_model(),
+      'field_goal_model': kicking.build_or_load_kicking_model(),
+    }
+    m.update(receivers.build_or_load_all_air_yards_kdes())
+
     inj_data = injuries.get_injury_data(2021, week)
     all_projections = []
     player_stats = player_stats.merge(inj_data[["player_id", "status", "exp_return"]], on="player_id", how="left")
+    # Trim the size of the player_stats object to only necessary fields to save space:
+    player_stats = player_stats[[
+        # General Info
+        "player_id", "player_name", "position","team", "status", "exp_return",
+        # Receiving data
+        "relative_air_yards_est", "target_share_est", "target_percentage", "targets", "relative_yac", "relative_yac_est",
+        # Rushing data
+        "carry_share_est", "carry_percentage", "big_carry_percentage","carries", "relative_ypc", "relative_ypc_est",
+        # Passing data
+        "cpoe_est", "pass_attempts",
+        # Kicking data
+        "kick_attempts"]]
+    team_stats = team_stats[[
+        # Basic
+        "team",
+        # Defensive outcome adjustments
+        "defense_relative_ypc", "defense_relative_yac", "defense_relative_air_yards", "defense_cpoe",
+        # Offensive outcome adjustments
+        "offense_sacks_per_dropback",
+        # Playcall tendencies
+        "offense_pass_oe_est", "defense_pass_oe_est"
+    ]]
     for i, row in schedules.iterrows():
         gameday_time = datetime.datetime.fromordinal(parse(row.gameday).date().toordinal())
         print("Projecting %s at %s" % (row.away_team, row.home_team))
@@ -83,7 +115,7 @@ def project_week(player_stats, team_stats, week, n):
         projections = []
         for i in range(n):
 
-            projections.append(project_game(game_stats, team_stats, row.home_team, row.away_team, week))
+            projections.append(project_game(m, game_stats, team_stats, row.home_team, row.away_team, week))
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
@@ -92,14 +124,14 @@ def project_week(player_stats, team_stats, week, n):
 
 
 
-def project_game(player_stats, team_stats, home, away, week):
+def project_game(models, player_stats, team_stats, home, away, week):
 
     # Here's all data about the players:
     home_player_stats = player_stats[player_stats["team"].isin([home])]
     away_player_stats = player_stats[player_stats["team"].isin([away])]
     home_team_stats = team_stats[team_stats["team"].isin([home])]
     away_team_stats = team_stats[team_stats["team"].isin([away])]
-    game_machine = game.GameState(home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
+    game_machine = game.GameState(models, home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
     return game_machine.play_game()
 
 
