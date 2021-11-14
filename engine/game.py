@@ -299,7 +299,7 @@ class GameState:
       pos = target["position"].values[0]
       # Use special position trained models at first, before adjusting.
 
-      if pos in self.air_yards_models.keys():
+      if pos in ["WR", "RB", "TE"]:
         base = self.air_yards_models[pos].sample(n_samples=1)[0][0]
       else:
         base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
