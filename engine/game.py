@@ -30,7 +30,6 @@ class GameState:
       self.playcall_model = models.playcall.build_or_load_playcall_model()
       self.yac_model = models.receivers.build_or_load_yac_kde()
       self.air_yards_models = models.receivers.build_or_load_all_air_yards_kdes()
-      self.air_yards_model = models.receivers.build_or_load_air_yards_kde()
       self.rush_model = models.rushers.build_or_load_rush_kde()
       self.completion_model = models.completion.build_or_load_completion_model()
       self.field_goal_model = models.kicking.build_or_load_kicking_model()
