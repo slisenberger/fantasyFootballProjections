@@ -36,6 +36,7 @@ class GameState:
           "ALL": models["ALL"],
       }
       self.rush_model = models["rush_model"]
+      self.int_return_model = models["int_return_model"]
 
 
       self.game_over = False
@@ -154,13 +155,25 @@ class GameState:
 
     # TODO: Handle return yards. currenly assumes no return.
     if interception:
-        # Advance the ball to a touchback or the point of the air yards.
-        if yards > self.yard_line:
-            self.yard_line = 25
-        else:
-            self.yard_line -= yards
+        # Advance the ball the point of the air yards.
+        self.yard_line -= yards
+        # Change possession and return
         self.change_possession()
-        self.first_down()
+        return_yards = self.int_return_model.sample(n_samples=1)[0][0]
+        self.yard_line -= return_yards
+
+        # Handle touchback
+        if self.yard_line >= 100:
+            self.yard_line = 75
+
+        if self.yard_line <= 0:
+            print("Pick six by %s" % self.posteam)
+            self.touchdown()
+            self.fantasy_points[self.posteam] += 6
+            td = True
+
+        else:
+            self.first_down()
 
     # If more yards were gained than remaining yards, touchdown.
     elif yards > self.yard_line:

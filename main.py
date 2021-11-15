@@ -12,7 +12,7 @@ import datetime
 from engine import game
 from stats import players, teams, injuries
 from data import loader
-from models import kicking, completion, playcall, receivers, rushers
+from models import int_return, kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
 # The Hello World will be correctly plotting the leaders in fantasy points for week 4. This ensures two goals:
@@ -75,6 +75,7 @@ def project_week(player_stats, team_stats, week, n):
       'rush_model': rushers.build_or_load_rush_kde(),
       'completion_model': completion.build_or_load_completion_model(),
       'field_goal_model': kicking.build_or_load_kicking_model(),
+      'int_return_model': int_return.build_or_load_int_return_kde(),
     }
     m.update(receivers.build_or_load_all_air_yards_kdes())
 
@@ -170,8 +171,8 @@ if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
-    week = 11
-    version = 200
+    week = 10
+    version = 201
     n_projections = 100
 
     # Load the full dataset.

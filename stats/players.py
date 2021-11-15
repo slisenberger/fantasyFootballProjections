@@ -174,6 +174,9 @@ def compute_ypc_estimator(data):
 def checkdown_estimator(data):
     pass
 
+def compute_big_carry_estimator(data):
+    pass
+
 def compute_yac_estimator(data):
     yac_prior = data["yards_after_catch"].mean()
     yac_span = 140
