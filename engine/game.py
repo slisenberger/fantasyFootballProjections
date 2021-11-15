@@ -167,7 +167,6 @@ class GameState:
             self.yard_line = 75
 
         if self.yard_line <= 0:
-            print("Pick six by %s" % self.posteam)
             self.touchdown()
             self.fantasy_points[self.posteam] += 6
             td = True

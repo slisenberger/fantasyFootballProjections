@@ -104,9 +104,5 @@ def score_from_play(play):
             scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
             scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
 
-
-
-
-
     return scores_on_play
 

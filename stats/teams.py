@@ -2,10 +2,8 @@ import pandas as pd
 from data import loader
 
 
-# Calculate 2021 team statistics that are used to determine tendencies.
-def calculate():
-    YEARS = [2021]
-    data = loader.load_data(YEARS)
+# Calculate team statistics that are used to determine tendencies.
+def calculate(data, season):
     lg_avg_ypc = data["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
@@ -145,14 +143,14 @@ def calculate():
     team_stats['defense_relative_air_yards'] = team_stats["defense_air_yards"] / lg_avg_air_yards
     team_stats['defense_relative_int_rate'] = team_stats['defense_int_rate'] / lvg_avg_int_rate
     team_stats['defense_relative_int_rate_est'] = team_stats['defense_int_rate_est'] / lvg_avg_int_rate
+    if season <= 2019:
+      team_stats['team'] = team_stats["team"].replace("LV", "OAK")
 
 
     team_stats.to_csv("team_stats.csv")
     return team_stats
 
-def calculate_weekly():
-    YEARS = [2021]
-    data = loader.load_data(YEARS)
+def calculate_weekly(data):
     targets_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         ["posteam", "week"])["receiver_player_id"].count().sort_values().to_frame(name="targets_wk").reset_index()\
         .rename(columns={'posteam': 'team'})
