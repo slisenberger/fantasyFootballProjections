@@ -51,8 +51,31 @@ class GameState:
       self.opening_kickoff()
       while not self.game_over:
           self.advance_snap()
-
+      # Give end-of-game point adjustments for defenses.
+      self.fantasy_points[self.home_team] += self.get_defense_score_points(self.away_score)
+      self.fantasy_points[self.away_team] += self.get_defense_score_points(self.home_score)
       return self.fantasy_points
+
+  def get_defense_score_points(self, score):
+      if score == 0:
+          return 10
+      elif score < 7:
+          return 7
+      elif score < 14:
+          return 4
+      elif score < 21:
+          return 1
+      elif score < 28:
+          return 0
+      elif score < 35:
+          return -1
+      else:
+          return -4
+
+
+
+      return points
+
 
   def change_possession(self):
       if self.posteam == self.home_team:
@@ -80,6 +103,7 @@ class GameState:
     yards = 0
     td = False
     sack = False
+    interception = False
     if playcall == "run":
         carrier = self.choose_carrier()
         carrier_id = carrier["player_id"].values[0]
@@ -88,16 +112,25 @@ class GameState:
         qb = self.choose_quarterback()
         qb_id = qb["player_id"].values[0]
         offense_sack_rate = self.get_pos_team_stats()["offense_sacks_per_dropback"].values[0]
+        defense_int_rate = self.get_def_team_stats()["defense_int_rate_est"].values[0]
         if random.random() < offense_sack_rate:
             sack = True
             yards = -7
 
+
         if not sack:
+            if random.random() < defense_int_rate:
+                interception = True
+
             target = self.choose_target()
             target_id = target["player_id"].values[0]
 
             air_yards = self.compute_air_yards(target)
-            is_complete = self.is_complete(air_yards)
+
+            if random.random() < defense_int_rate:
+                interception = True
+
+            is_complete = not interception and self.is_complete(air_yards)
 
             if is_complete:
                 yac = self.compute_yac(target)
@@ -119,8 +152,18 @@ class GameState:
     except IndexError:
       k_id = "Kicker_%s" % self.posteam
 
+    # TODO: Handle return yards. currenly assumes no return.
+    if interception:
+        # Advance the ball to a touchback or the point of the air yards.
+        if yards > self.yard_line:
+            self.yard_line = 25
+        else:
+            self.yard_line -= yards
+        self.change_possession()
+        self.first_down()
+
     # If more yards were gained than remaining yards, touchdown.
-    if yards > self.yard_line:
+    elif yards > self.yard_line:
       yards = self.yard_line
       self.touchdown()
       td = True
@@ -160,6 +203,13 @@ class GameState:
             if self.extra_point():
             # TODO: model this
               self.fantasy_points[k_id] += 1
+    if interception:
+        self.fantasy_points[qb_id] -= 1.5
+        self.fantasy_points[self.defteam()] += 2
+
+    if sack:
+        self.fantasy_points[self.defteam()] += 1
+
 
     self.advance_clock(playcall, sack, is_complete)
 
@@ -211,7 +261,7 @@ class GameState:
       elif playcall == "punt":
           self.sec_remaining -= 5
       else:
-          self.sec_remaining -= 40
+          self.sec_remaining -= 35
 
       # Check for the 2 minute warning.
       if self.quarter in [2,4] and (self.sec_remaining < 120 and original_sec_remaining > 120):
@@ -309,7 +359,8 @@ class GameState:
         base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
 
       defense_relative_air_yards = self.get_def_team_stats()["defense_relative_air_yards"].values[0]
-      if pos in ["WR", "TE"]:
+      # For routes that are clearly in positive territory, apply multiplies.
+      if pos in ["WR", "TE"] and base >= 0:
           # For WR and TE, apply a multiplier to increase their ADOT.
           base *= target["relative_air_yards_est"].values[0]
           base *= defense_relative_air_yards
@@ -321,9 +372,10 @@ class GameState:
       # Come up with a way to handle small sample high yac players
       targets = target["targets"].values[0]
       relative_yac_est = target["relative_yac_est"].values[0]
-      defense_relative_yac = self.get_def_team_stats()["defense_relative_yac"].values[0]
-      yac *= defense_relative_yac
-      yac *= relative_yac_est
+      defense_relative_yac = self.get_def_team_stats()["defense_relative_yac_est"].values[0]
+      if yac > 0:
+        yac *= defense_relative_yac
+        yac *= relative_yac_est
 
       return yac[0]
 
@@ -338,7 +390,7 @@ class GameState:
       # Come up with a way to handle small sample high yac players
 
       relative_ypc_est = carrier["relative_ypc_est"].values[0]
-      defense_relative_ypc = self.get_def_team_stats()["defense_relative_ypc"].values[0]
+      defense_relative_ypc = self.get_def_team_stats()["defense_relative_ypc_est"].values[0]
       yards *= defense_relative_ypc
       yards *= relative_ypc_est
 
@@ -415,7 +467,7 @@ class GameState:
       base_probs = self.completion_model.predict_proba([model_input])[0]
 
       # Adjust probabilities for team trends
-      defense_cpoe = self.get_def_team_stats()["defense_cpoe"].values[0] / 100.0
+      defense_cpoe = self.get_def_team_stats()["defense_cpoe_est"].values[0] / 100.0
       base_probs[COMPLETE_INDEX] += defense_cpoe
       base_probs[INCOMPLETE_INDEX] -= defense_cpoe
 
@@ -429,4 +481,9 @@ class GameState:
 
       return complete
 
+  def defteam(self):
+      if self.posteam == self.home_team:
+          return self.home_team
+      else:
+          return self.away_team
 

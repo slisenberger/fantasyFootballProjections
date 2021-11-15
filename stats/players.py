@@ -1,7 +1,7 @@
 import pandas as pd
 import numpy as np
 import nfl_data_py
-# from statsmodels.formula.api import mixedlm
+from statsmodels.formula.api import mixedlm
 from collections import defaultdict
 from stats import injuries, teams
 from data import loader
@@ -62,6 +62,9 @@ def calculate(team_stats):
         .to_frame(name="cpoe").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
     cpoe_est = compute_cpoe_estimator(data)
+    int = data.groupby("passer_player_id").size() \
+        .to_frame(name="interceptions").reset_index() \
+        .rename(columns={'passer_player_id': 'player_id'})
     pass_attempts = data.groupby("passer_player_id").size() \
         .to_frame(name="pass_attempts").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
@@ -114,17 +117,17 @@ def calculate(team_stats):
     offense_stats['relative_air_yards'] = offense_stats["air_yards_per_target"] / lg_avg_air_yards
     offense_stats['relative_air_yards_est'] = offense_stats["air_yards_est"] / lg_avg_air_yards
 
-    # Experimental modeling
-    #estimate_cpoe_attribution()
+    # Experimental modeling to use MLM. Will take some work to get right.
+    # estimate_cpoe_attribution(data)
 
 
     offense_stats.to_csv('offense_stats.csv')
     return offense_stats
 
 def estimate_cpoe_attribution(data):
-    data = data.loc[~data.cpoe.isnull()]
     data["group"] = 1
-    vcf = {"passer_player_id": "0 + C(passer_player_id)", "receiver_player_id": "0+C(receiver_player_id)"}
+    data = data.loc[~data.cpoe.isnull()]
+    vcf = {"passer_player_id": "0 + C(passer_player_id)", "receiver_player_id": "0 + C(receiver_player_id)"}
     model = mixedlm("cpoe ~ qb_hit", groups=data["group"], vc_formula=vcf, data=data)
     mdf = model.fit()
     print(mdf.summary())
