@@ -10,17 +10,14 @@ from data import loader
 from stats.util import prepend
 
 
-def calculate(team_stats):
-
-    YEARS = [2021]
-    data = loader.load_data(YEARS)
+def calculate(data, team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
     lg_avg_ypc = data["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
 
-    weekly_team_stats = teams.calculate_weekly()
-    weekly_player_stats = calculate_weekly(weekly_team_stats)
+    weekly_team_stats = teams.calculate_weekly(data)
+    weekly_player_stats = calculate_weekly(data, weekly_team_stats, season)
 
     receiver_targets = data.groupby("receiver_player_id")\
         .size().sort_values().to_frame(name='targets').reset_index()\
@@ -98,7 +95,7 @@ def calculate(team_stats):
 
 
     # Set metadata
-    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "player_name", "team"])
+    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
     offense_stats = offense_stats.merge(roster_data, on="player_id", how="left")
     team_targets = team_stats[["team", "targets", "carries", "red_zone_targets", "red_zone_carries"]]
     offense_stats = offense_stats.merge(team_targets, how="outer", on="team", suffixes=[None,"_team"])
@@ -191,9 +188,7 @@ def compute_yac_estimator(data):
 
 
 
-def calculate_weekly(weekly_team_stats):
-    YEARS = [2021]
-    data = loader.load_data(YEARS)
+def calculate_weekly(data, weekly_team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
     all_players = build_player_id_map(data)
     all_teams = build_player_team_map(data)
@@ -217,7 +212,7 @@ def calculate_weekly(weekly_team_stats):
         .merge(get_weekly_injuries(), how="outer", on=["player_id", "week"])
 
     weekly_stats["available"] = weekly_stats["available"].fillna(True)
-    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "team"])
+    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "team"])
     weekly_stats = weekly_stats.merge(roster_data, on="player_id", how="left")
     weekly_team_targets = weekly_team_stats[["team", "week", "targets_wk", "carries_wk"]]
     weekly_stats = weekly_stats.merge(weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"])

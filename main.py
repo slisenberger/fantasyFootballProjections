@@ -3,6 +3,7 @@ import nfl_data_py
 import pandas as pd
 import random
 import matplotlib.pyplot as plt
+from sklearn.metrics import r2_score, mean_squared_error
 import score
 import warnings
 import numpy as np
@@ -15,25 +16,12 @@ from data import loader
 from models import int_return, kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
-# The Hello World will be correctly plotting the leaders in fantasy points for week 4. This ensures two goals:
-# Testability, we can compare with unit tests.
-# Our point calculation is correct.
-def calculate_fantasy_leaders():
-    YEARS = [2021]
-    data = pd.DataFrame()
-
-    for i in YEARS:
-        i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
-                             compression='gzip', low_memory=False)
-
-        data = data.append(i_data, sort=True)
-
-    week_four = data.loc[data.week == 9]
-    all_players = build_player_id_map(week_four)
+# Calculates the fantasy leaders on a given dataframe.
+def calculate_fantasy_leaders(data):
+    all_players = build_player_id_map(data)
     scores = defaultdict(float)
-
-    for i in range(len(week_four)):
-        play_score = score.score_from_play(week_four.iloc[i])
+    for i in range(len(data)):
+        play_score = score.score_from_play(data.iloc[i])
         if play_score != None:
             for key in play_score.keys():
                 scores[key] += play_score[key]
@@ -43,9 +31,10 @@ def calculate_fantasy_leaders():
     for row in base_data:
         if row[0] in all_players:
           new_base_data.append([row[0], all_players[row[0]], row[1]])
-    w4_scores = pd.DataFrame(new_base_data, columns=["player_id", "Player Name", "Score"])
-    w4_scores_sorted = w4_scores.sort_values(by=["Score"], ascending=False)
-    print(w4_scores_sorted)
+    all_scores = pd.DataFrame(new_base_data, columns=["player_id", "player_name", "score"])
+    all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False)
+    print(all_scores_sorted)
+    return all_scores_sorted
 
 
 
@@ -65,21 +54,16 @@ def build_player_id_map(data):
     return all_players
 
 # Projects the a given week's estimated fantasy points.
-def project_week(player_stats, team_stats, week, n):
-    schedules = nfl_data_py.import_schedules([2021])
+def project_week(data, models, season, week, n):
+    # Load the relevant dataset, which is all weak before this.
+    single_season_data = data.loc[data.season == season].loc[data.week < week]
+    team_stats = teams.calculate(single_season_data, season)
+    player_stats = players.calculate(single_season_data, team_stats, season)
+    schedules = nfl_data_py.import_schedules([season])
     schedules = schedules.loc[schedules.week == week]
     # The models used to inform probabilities and choices.
-    m = {
-      'playcall_model': playcall.build_or_load_playcall_model(),
-      'yac_model': receivers.build_or_load_yac_kde(),
-      'rush_model': rushers.build_or_load_rush_kde(),
-      'completion_model': completion.build_or_load_completion_model(),
-      'field_goal_model': kicking.build_or_load_kicking_model(),
-      'int_return_model': int_return.build_or_load_int_return_kde(),
-    }
-    m.update(receivers.build_or_load_all_air_yards_kdes())
 
-    inj_data = injuries.get_injury_data(2021, week)
+    inj_data = injuries.get_injury_data(season, week)
     all_projections = []
     player_stats = player_stats.merge(inj_data[["player_id", "status", "exp_return"]], on="player_id", how="left")
     # Trim the size of the player_stats object to only necessary fields to save space:
@@ -116,12 +100,12 @@ def project_week(player_stats, team_stats, week, n):
         game_stats = game_stats.loc[~(game_stats.exp_return > gameday_time)]
         projections = []
         for i in range(n):
-
-            projections.append(project_game(m, game_stats, team_stats, row.home_team, row.away_team, week))
+            projections.append(project_game(models, game_stats, team_stats, row.home_team, row.away_team, week))
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
     proj_df = pd.concat(all_projections)
+
     return proj_df
 
 
@@ -136,51 +120,26 @@ def project_game(models, player_stats, team_stats, home, away, week):
     game_machine = game.GameState(models, home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
     return game_machine.play_game()
 
+def score_predictions(predictions, data, season, week):
+    scores = calculate_fantasy_leaders(data.loc[data.season == season].loc[data.week == week])
+    merged_plot = scores.merge(predictions, on="player_id", how="outer")
+    actual = merged_plot["score"].fillna(0)
+    predicted = merged_plot["median"].fillna(0)
+    plt.figure(figsize=(10, 10))
+    plt.scatter(predicted, actual, c='crimson')
 
-# Returns the projection results for a single week and year.
-def project(data, week, year, n_projections):
-    team_stats = teams.calculate(data, week, year)
-    player_stats = players.calculate(data, week, year, team_stats)
-    projection_data = project_week(player_stats, team_stats, year, week, n_projections).reset_index()
-    projection_data = projection_data.rename(columns={"index": "player_id"})
+    p1 = max(max(predicted), max(actual))
+    p2 = min(min(predicted), min(actual))
+    plt.plot([p1, p2], [p1, p2], 'b-')
+    plt.xlabel('Predicted Median Fantasy Scores', fontsize=15)
+    plt.ylabel('Actual Fantasy Scores', fontsize=15)
+    plt.axis('equal')
+    plt.show()
+    r2 = r2_score(actual, predicted)
+    rmse = mean_squared_error(actual, predicted)
+    return pd.Series(dict(season=season, week=week, r2=r2, rmse=rmse))
 
-    projection_data = projection_data.fillna(0)
-    median = projection_data.median(axis=1)
-    percentile_10 = projection_data.quantile(.1, axis=1)
-    percentile_25 = projection_data.quantile(.25, axis=1)
-    percentile_75 = projection_data.quantile(.75, axis=1)
-    percentile_90 = projection_data.quantile(.9, axis=1)
-    projection_data = projection_data.assign(median=median)
-    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "player_name", "team"])
-    projection_data = projection_data.merge(roster_data, on="player_id", how="left")
-    projection_data = projection_data.sort_values(by="median", ascending=False)[
-        ["player_id", "player_name", "team", "position", "percentile_10", "percentile_25", "median", "percentile_75",
-         "percentile_90"]]
-
-
-# The primary entry point for the program. Initializes the majority of necessary data.
-if __name__ == '__main__':
-    # Quiet the deprecation warnings in the command line a little.
-    warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
-    warnings.filterwarnings("ignore", category=FutureWarning)
-    # injuries.clean_and_save_data()
-    # Get full datasets for pbp and injuries and rosters for future joining.
-    # pbp_data = loader.load_data([2016, 2017, 2018, 2019, 2020, 2021])
-
-
-    # This doesn't always need to be done. would like to run this on a cron schedule.
-    # load_and_clean_data()
-    #calculate_fantasy_leaders(9)
-    week = 10
-    version = 201
-    n_projections = 100
-
-    # Load the full dataset.
-    team_stats = teams.calculate()
-    player_stats = players.calculate(team_stats)
-
-    # Generate all week 10 Projection Data
-    projection_data = project_week(player_stats, team_stats, week, n_projections).reset_index()
+def compute_stats_and_export(projection_data, season):
     projection_data = projection_data.rename(columns={"index": "player_id"})
 
     projection_data = projection_data.fillna(0)
@@ -194,19 +153,65 @@ if __name__ == '__main__':
     projection_data = projection_data.assign(percentile_25=percentile_25)
     projection_data = projection_data.assign(percentile_75=percentile_75)
     projection_data = projection_data.assign(percentile_90=percentile_90)
-    roster_data = nfl_data_py.import_rosters([2021], columns=["player_id", "position", "player_name", "team"])
+    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
     projection_data = projection_data.merge(roster_data, on="player_id", how="left")
-    projection_data = projection_data.sort_values(by="median",ascending=False)[
+    projection_data = projection_data.sort_values(by="median", ascending=False)[
         ["player_id", "player_name", "team", "position", "percentile_10", "percentile_25", "median", "percentile_75",
          "percentile_90"]]
-
 
     projection_data.to_csv("projections_week_%s_v%s.csv" % (week, version))
     base_path = os.path.join("projections/", "w%s_v%s_" % (week, version))
     projection_data.to_csv(base_path + "all.csv")
-    projection_data.loc[projection_data.position == "QB"].to_csv(base_path +"qb.csv")
+    projection_data.loc[projection_data.position == "QB"].to_csv(base_path + "qb.csv")
     projection_data.loc[projection_data.position == "RB"].to_csv(base_path + "rb.csv")
     projection_data.loc[projection_data.position == "WR"].to_csv(base_path + "wr.csv")
     projection_data.loc[projection_data.position == "TE"].to_csv(base_path + "te.csv")
     projection_data.loc[projection_data.position.isin(["RB", "WR", "TE"])].to_csv(base_path + "flex.csv")
     projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
+
+
+# The primary entry point for the program. Initializes the majority of necessary data.
+if __name__ == '__main__':
+    # Quiet the deprecation warnings in the command line a little.
+    warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
+    warnings.filterwarnings("ignore", category=FutureWarning)
+    # injuries.clean_and_save_data()
+    # Get full datasets for pbp and injuries and rosters for future joining.
+    pbp_data = loader.load_data([2019,2020,2021])
+    version = 201
+    n_projections = 100
+    models = {
+        'playcall_model': playcall.build_or_load_playcall_model(),
+        'yac_model': receivers.build_or_load_yac_kde(),
+        'rush_model': rushers.build_or_load_rush_kde(),
+        'completion_model': completion.build_or_load_completion_model(),
+        'field_goal_model': kicking.build_or_load_kicking_model(),
+        'int_return_model': int_return.build_or_load_int_return_kde(),
+    }
+    models.update(receivers.build_or_load_all_air_yards_kdes())
+
+    # Run some tests on the methodology.
+    all_scores = []
+    for season in range(2019, 2020):
+        for week in range(11, 16):
+            print("Running projections on %s %s" % (season, week))
+            prediction_data = project_week(pbp_data, models, season, week, 50).reset_index()
+            prediction_data = prediction_data.assign(median=prediction_data.median(axis=1))
+            prediction_data = prediction_data.rename(columns={"index": "player_id"})
+            scores = score_predictions(prediction_data, pbp_data, season, week)
+            all_scores.append(score_predictions)
+
+    pd.concat(all_scores).to_csv("projection_test_scores.csv")
+
+    # Generate all remaining weeks projection data
+    for week in range(11,18):
+      projection_data = project_week(pbp_data, 2021, week, n_projections).reset_index()
+      compute_stats_and_export(projection_data, 2021)
+
+
+
+
+
+
+
+
