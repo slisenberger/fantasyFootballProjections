@@ -97,7 +97,8 @@ def project_week(player_stats, team_stats, week, n):
         # Basic
         "team",
         # Defensive outcome adjustments
-        "defense_relative_ypc", "defense_relative_yac", "defense_relative_air_yards", "defense_cpoe",
+        "defense_relative_ypc_est", "defense_relative_yac_est", "defense_relative_air_yards", "defense_cpoe_est",
+        "defense_int_rate_est",
         # Offensive outcome adjustments
         "offense_sacks_per_dropback",
         # Playcall tendencies
@@ -169,11 +170,11 @@ if __name__ == '__main__':
     # This doesn't always need to be done. would like to run this on a cron schedule.
     # load_and_clean_data()
     #calculate_fantasy_leaders(9)
-    week = 10
-    version = 15
-    n_projections = 10
+    week = 11
+    version = 200
+    n_projections = 100
 
-    # Create an easier way to identify players in fantasy
+    # Load the full dataset.
     team_stats = teams.calculate()
     player_stats = players.calculate(team_stats)
 
