@@ -111,7 +111,10 @@ class GameState:
         yards = self.compute_carry_yards(carrier)
     if playcall == "pass":
         qb = self.choose_quarterback()
-        qb_id = qb["player_id"].values[0]
+        try:
+            qb_id = qb["player_id"].values[0]
+        except IndexError:
+            qb_id = "QB_%s" % self.posteam
         offense_sack_rate = self.get_pos_team_stats()["offense_sacks_per_dropback"].values[0]
         defense_int_rate = self.get_def_team_stats()["defense_int_rate_est"].values[0]
         if random.random() < offense_sack_rate:
@@ -182,6 +185,7 @@ class GameState:
 
     # Tackled for loss into endzone should result in safety.
     elif self.yard_line - yards > 100:
+        self.fantasy_points[self.defteam()] += 2
         self.safety()
 
 
@@ -350,13 +354,13 @@ class GameState:
 
   def choose_quarterback(self):
       pos_player_stats = self.get_pos_player_stats()
-      eligible_qbs = pos_player_stats.loc[pos_player_stats["pass_attempts"] > 0][["player_id", "player_name", "cpoe_est", "pass_attempts"]]
+      eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == "QB"][["player_id", "player_name", "cpoe_est", "pass_attempts"]]
       qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
       return qb
 
   def choose_kicker(self):
       pos_player_stats = self.get_pos_player_stats()
-      eligible_ks = pos_player_stats.loc[pos_player_stats["kick_attempts"] > 0][
+      eligible_ks = pos_player_stats.loc[pos_player_stats["position"] == "K"][
           ["player_id", "player_name", "kick_attempts"]]
       k = eligible_ks.sort_values(by="kick_attempts", ascending=False).head(1)
       return k
@@ -485,7 +489,11 @@ class GameState:
 
       # Adjust the completion probability for the active quarterback.
       qb = self.choose_quarterback()
-      qb_cpoe = qb["cpoe_est"].values[0] / 100.0
+      try:
+          qb_cpoe = qb["cpoe_est"].values[0] / 100.0
+      # Certain situations currently lead to no QBs being rostered
+      except IndexError:
+          qb_cpoe = 0
       base_probs[COMPLETE_INDEX] += qb_cpoe
       base_probs[INCOMPLETE_INDEX] -= qb_cpoe
 
