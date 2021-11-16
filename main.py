@@ -18,7 +18,6 @@ from collections import defaultdict
 
 # Calculates the fantasy leaders on a given dataframe.
 def calculate_fantasy_leaders(data):
-    all_players = build_player_id_map(data)
     scores = defaultdict(float)
     for i in range(len(data)):
         play_score = score.score_from_play(data.iloc[i])
@@ -26,12 +25,15 @@ def calculate_fantasy_leaders(data):
             for key in play_score.keys():
                 scores[key] += play_score[key]
 
+    # Add defensive points
+    games = data.loc[data.description == "GAME_END"]
+    for i in range(len(games)):
+        row = data.iloc[i]
+        scores[row.away_team] += score.points_from_score(row.home_score)
+        scores[row.home_team] += score.points_from_score(row.away_score)
+
     base_data = scores.items()
-    new_base_data = []
-    for row in base_data:
-        if row[0] in all_players:
-          new_base_data.append([row[0], all_players[row[0]], row[1]])
-    all_scores = pd.DataFrame(new_base_data, columns=["player_id", "player_name", "score"])
+    all_scores = pd.DataFrame(base_data, columns=["player_id", "score"])
     all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False)
     print(all_scores_sorted)
     return all_scores_sorted
@@ -134,10 +136,9 @@ def score_predictions(predictions, data, season, week):
     plt.xlabel('Predicted Median Fantasy Scores', fontsize=15)
     plt.ylabel('Actual Fantasy Scores', fontsize=15)
     plt.axis('equal')
-    plt.show()
     r2 = r2_score(actual, predicted)
-    rmse = mean_squared_error(actual, predicted)
-    return pd.Series(dict(season=season, week=week, r2=r2, rmse=rmse))
+    rmse = mean_squared_error(actual, predicted, squared=False)
+    return pd.DataFrame(pd.Series(dict(season=season, week=week, r2=r2, rmse=rmse)))
 
 def compute_stats_and_export(projection_data, season):
     projection_data = projection_data.rename(columns={"index": "player_id"})
@@ -175,11 +176,11 @@ if __name__ == '__main__':
     # Quiet the deprecation warnings in the command line a little.
     warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
-    # injuries.clean_and_save_data()
+    loader.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
-    pbp_data = loader.load_data([2019,2020,2021])
-    version = 201
-    n_projections = 100
+    pbp_data = loader.load_data([2018, 2019,2020,2021])
+    version = 202
+    n_projections = 500
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
@@ -192,20 +193,20 @@ if __name__ == '__main__':
 
     # Run some tests on the methodology.
     all_scores = []
-    for season in range(2019, 2020):
-        for week in range(11, 16):
+    for season in range(2018, 2019):
+        for week in range(8, 9):
             print("Running projections on %s %s" % (season, week))
             prediction_data = project_week(pbp_data, models, season, week, 50).reset_index()
             prediction_data = prediction_data.assign(median=prediction_data.median(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
-            scores = score_predictions(prediction_data, pbp_data, season, week)
-            all_scores.append(score_predictions)
+            scores = score_predictions(prediction_data, pbp_data, season, week).transpose()
+            all_scores.append(scores)
 
-    pd.concat(all_scores).to_csv("projection_test_scores.csv")
+    pd.concat(all_scores, axis=1).to_csv("projection_test_scores_v%s.csv" % version)
 
     # Generate all remaining weeks projection data
-    for week in range(11,18):
-      projection_data = project_week(pbp_data, 2021, week, n_projections).reset_index()
+    for week in range(11,19):
+      projection_data = project_week(pbp_data, models, 2021, week, n_projections).reset_index()
       compute_stats_and_export(projection_data, 2021)
 
 

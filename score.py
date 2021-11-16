@@ -79,7 +79,7 @@ def score_from_play(play):
        scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TOUCHDOWN_RECEIVING]
     if play.rush_touchdown:
         scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_TOUCHDOWN_RUSHING]
-    if play.return_touchdown:
+    if (play.kickoff_attempt or play.punt_attempt) and play.return_touchdown:
         return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
         scores_on_play[return_id] += _SCORING_VALUES[_TOUCHDOWN_RETURN]
     if play.receiving_yards > 0:
@@ -94,6 +94,9 @@ def score_from_play(play):
         scores_on_play[return_id] += _SCORING_VALUES[_YARDS_RETURN] * play.return_yards
     if play.interception:
         scores_on_play[play.passer_player_id] += _SCORING_VALUES[_INTERCEPTION_THROW]
+        scores_on_play[play.defteam] += _SCORING_VALUES[_INTERCEPTION]
+        if play.return_touchdown:
+            scores_on_play[play.defteam] += _SCORING_VALUES[_TOUCHDOWN_DEFENSE]
     if play.fumble_lost:
         scores_on_play[play.fumbled_1_player_id] += _SCORING_VALUES[_FUMBLE_LOST]
     if play.two_point_conv_result == "success":
@@ -104,5 +107,30 @@ def score_from_play(play):
             scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
             scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
 
+    if play.sack:
+        scores_on_play[play.defteam] += _SCORING_VALUES[_SACK]
+
+    if play.field_goal_attempt and play.field_goal_result == "blocked":
+        scores_on_play[play.defteam] += _SCORING_VALUES[_BLOCK_KICK]
+
+    if play.safety:
+        scores_on_play[play.defteam] += _SCORING_VALUES[_SAFETY]
+
     return scores_on_play
+
+def points_from_score(score):
+    if score == 0:
+        return _SCORING_VALUES[_POINTS_ALLOWED_0]
+    elif score < 7:
+        return _SCORING_VALUES[_POINTS_ALLOWED_1_6]
+    elif score < 14:
+        return _SCORING_VALUES[_POINTS_ALLOWED_7_13]
+    elif score < 21:
+        return _SCORING_VALUES[_POINTS_ALLOWED_14_20]
+    elif score < 28:
+        return _SCORING_VALUES[_POINTS_ALLOWED_21_27]
+    elif score < 35:
+        return _SCORING_VALUES[_POINTS_ALLOWED_28_34]
+    else:
+        return _SCORING_VALUES[_POINTS_ALLOWED_35_OR_MORE]
 
