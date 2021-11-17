@@ -339,7 +339,9 @@ class GameState:
 
   def choose_target(self):
       pos_player_stats = self.get_pos_player_stats()
-      eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est", "targets", "relative_yac", "relative_yac_est"]]
+      eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][
+          ["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est",
+           "targets", "relative_yac", "relative_yac_est", "receiver_cpoe_est"]]
       target = random.choices(eligible_targets["player_id"].tolist(), weights=eligible_targets["target_share_est"].tolist(), k=1)[0]
       return eligible_targets.loc[eligible_targets["player_id"] == target]
 
@@ -373,13 +375,19 @@ class GameState:
       else:
         base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
 
+
       defense_relative_air_yards = self.get_def_team_stats()["defense_relative_air_yards"].values[0]
       # For routes that are clearly in positive territory, apply multiplies.
       if pos in ["WR", "TE"] and base >= 0:
           # For WR and TE, apply a multiplier to increase their ADOT.
           base *= target["relative_air_yards_est"].values[0]
-          base *= defense_relative_air_yards
+          # In red zone offense, stop applying team air yards multipliers.
+          if self.yard_line <= 20:
+              base *= defense_relative_air_yards
 
+      # If the total is too high to be realistic for the back of the end zone, try again.
+      if self.yard_line - base <= -10:
+          return self.compute_air_yards(target)
       return base
 
   def compute_yac(self, target):
@@ -469,7 +477,7 @@ class GameState:
       else:
           return self.home_team_stats
 
-  def is_complete(self, air_yards):
+  def is_complete(self, air_yards, target):
       COMPLETE_INDEX = 1
       INCOMPLETE_INDEX = 0
       # Baseline -- Use a logistic regression model to choose a playtype.
@@ -490,11 +498,16 @@ class GameState:
       qb = self.choose_quarterback()
       try:
           qb_cpoe = qb["cpoe_est"].values[0] / 100.0
+
       # Certain situations currently lead to no QBs being rostered
       except IndexError:
           qb_cpoe = 0
-      base_probs[COMPLETE_INDEX] += qb_cpoe
-      base_probs[INCOMPLETE_INDEX] -= qb_cpoe
+
+      target_cpoe = target["receiver_cpoe_est"].values[0] / 100.0
+      # TODO: Find a less arbitrary way of assigning credit to qb and receiver
+      offense_cpoe = .75 * qb_cpoe + .25 * receiver_cpoe
+      base_probs[COMPLETE_INDEX] += offense_cpoe
+      base_probs[INCOMPLETE_INDEX] -= offense_cpoe
 
       complete = random.choices(self.completion_model.classes_, weights=base_probs, k=1)[0]
 

@@ -38,7 +38,7 @@ def calculate_fantasy_leaders(pbp_data, season, week):
 
     base_data = scores.items()
     all_scores = pd.DataFrame(base_data, columns=["player_id", "score"])
-    all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False)
+    all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False).dropna()
     print(all_scores_sorted)
     return all_scores_sorted
 
@@ -75,6 +75,7 @@ def project_week(data, models, season, week, n):
         "player_id", "player_name", "position","team", "status", "exp_return",
         # Receiving data
         "relative_air_yards_est", "target_share_est", "target_percentage", "targets", "relative_yac", "relative_yac_est",
+        "receiver_cpoe_est",
         # Rushing data
         "carry_share_est", "carry_percentage", "big_carry_percentage","carries", "relative_ypc", "relative_ypc_est",
         # Passing data
@@ -209,11 +210,13 @@ def project_ros(pbp_data, models, season,  cur_week, n_projections, version):
     playoffs_mean = all_ros.loc[all_ros.week >= 15].groupby("player_id")["mean"].mean().to_frame("playoffs_mean").sort_values(
         by="playoffs_mean", ascending=False).reset_index()
 
-
     base_path = os.path.join("projections/", "v%s_" % version)
-    ros_sum.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "ros_total"]].to_csv(base_path + "ros_total.csv")
-    ros_mean.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "ros_mean"]].to_csv(base_path + "ros_mean.csv")
-    playoffs_mean.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "playoffs_mean"]].to_csv(base_path + "playoffs_mean.csv")
+    ros_sum.merge(roster_data, on="player_id", how="outer")[
+        ["player_id", "player_name", "team", "position", "ros_total"]].to_csv(base_path + "ros_total.csv")
+    ros_mean.merge(roster_data, on="player_id", how="outer")[
+        ["player_id", "player_name", "team", "position", "ros_mean"]].to_csv(base_path + "ros_mean.csv")
+    playoffs_mean.merge(roster_data, on="player_id", how="outer")[
+        ["player_id", "player_name", "team", "position", "playoffs_mean"]].to_csv(base_path + "playoffs_mean.csv")
 
 
 
@@ -226,10 +229,10 @@ if __name__ == '__main__':
     # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
     pbp_data = loader.load_data([2018,2019,2020,2021])
-    version = 203
-    current_week = 17
+    version = 204
+    current_week = 11
     season = 2021
-    n_projections = 5
+    n_projections = 500
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
@@ -241,15 +244,15 @@ if __name__ == '__main__':
     models.update(receivers.build_or_load_all_air_yards_kdes())
 
     # Generate projections for all remaining weeks and ROS metadata.
-    project_ros(pbp_data, models, season, current_week, n_projections, version)
+    # project_ros(pbp_data, models, season, current_week, n_projections, version)
 
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
     all_prediction_data = []
-    for season in range(2018, 2019):
-        for week in range(8, 18):
+    for season in range(2018, 2021):
+        for week in range(8, 19):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 10).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 100).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
