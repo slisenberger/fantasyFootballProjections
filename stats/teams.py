@@ -8,6 +8,7 @@ def calculate(data, season):
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
     lvg_avg_int_rate = data.loc[data.interception == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
+    lvg_avg_sack_rate = data.loc[data.sack == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
 
     pass_happiness_offense = data.groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="offense_pass_oe").reset_index()\
@@ -132,10 +133,13 @@ def calculate(data, season):
     team_stats['offense_hold_rate'] = team_stats['offense_holds_drawn'] / team_stats['offense_snaps']
     team_stats['defense_hold_rate'] = team_stats['defense_holds_drawn'] / team_stats['defense_snaps']
     team_stats['offense_sacks_per_dropback'] = team_stats["offense_sacks"] / team_stats["dropbacks"]
+    team_stats = team_stats.merge(compute_offense_sack_rate_estimator(data), on="team")
     team_stats["offense_qb_hits_per_dropback"] = team_stats["offense_qb_hits"] / team_stats["dropbacks"]
     team_stats["offense_scrambles_per_dropback"] = team_stats["offense_scrambles"] / team_stats["dropbacks"]
     team_stats["defense_int_rate"] = team_stats["def_ints"] / team_stats["dropbacks_def"]
     team_stats = team_stats.merge(compute_defense_int_rate_estimator(data), on="team")
+    team_stats['defense_sacks_per_dropback'] = team_stats["defense_sacks"] / team_stats["dropbacks_def"]
+    team_stats = team_stats.merge(compute_defense_sack_rate_estimator(data), on="team")
     team_stats['defense_relative_ypc'] = team_stats["defense_ypc"] / lg_avg_ypc
     team_stats['defense_relative_yac'] = team_stats["defense_yac"] / lg_avg_yac
     team_stats['defense_relative_ypc_est'] = team_stats["defense_ypc_est"] / lg_avg_ypc
@@ -143,6 +147,10 @@ def calculate(data, season):
     team_stats['defense_relative_air_yards'] = team_stats["defense_air_yards"] / lg_avg_air_yards
     team_stats['defense_relative_int_rate'] = team_stats['defense_int_rate'] / lvg_avg_int_rate
     team_stats['defense_relative_int_rate_est'] = team_stats['defense_int_rate_est'] / lvg_avg_int_rate
+    team_stats['offense_relative_sack_rate'] = team_stats['offense_sack_rate'] / lvg_avg_sack_rate
+    team_stats['defense_relative_sack_rate'] = team_stats['defense_sack_rate'] / lvg_avg_sack_rate
+    team_stats['offense_relative_sack_rate_est'] = team_stats['offense_sack_rate_est'] / lvg_avg_sack_rate
+    team_stats['defense_relative_sack_rate_est'] = team_stats['defense_sack_rate_est'] / lvg_avg_sack_rate
     if season <= 2019:
       team_stats['team'] = team_stats["team"].replace("LV", "OAK")
 
@@ -212,6 +220,24 @@ def compute_defense_int_rate_estimator(data):
     int_est = biased_int.groupby(["defteam"])["interception"].apply(lambda x: x.ewm(span=int_span, adjust=False).mean()).to_frame()
     int_est_now = int_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'interception': 'defense_int_rate_est'})[["team", "defense_int_rate_est"]]
     return int_est_now
+
+def compute_defense_sack_rate_estimator(data):
+    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
+    sack_span=1000
+    data = data.loc[data.play_type.isin(["pass"])]
+    biased_sack = data.groupby(["defteam"])["sack"].apply(lambda d: prepend(d, sack_prior)).to_frame()
+    sack_est = biased_sack.groupby(["defteam"])["sack"].apply(lambda x: x.ewm(span=sack_span, adjust=False).mean()).to_frame()
+    sack_est_now = sack_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'sack': 'defense_sack_rate_est'})[["team", "defense_sack_rate_est"]]
+    return sack_est_now
+
+def compute_offense_sack_rate_estimator(data):
+    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
+    sack_span=1000
+    data = data.loc[data.play_type.isin(["pass"])]
+    biased_sack = data.groupby(["posteam"])["sack"].apply(lambda d: prepend(d, sack_prior)).to_frame()
+    sack_est = biased_sack.groupby(["posteam"])["sack"].apply(lambda x: x.ewm(span=sack_span, adjust=False).mean()).to_frame()
+    sack_est_now = sack_est.groupby(["posteam"]).tail(1).reset_index().rename(columns={'posteam': 'team', 'sack': 'offense_sack_rate_est'})[["team", "offense_sack_rate_est"]]
+    return sack_est_now
 
 def prepend(df, val):
     df.loc[-1] = val

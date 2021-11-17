@@ -75,12 +75,12 @@ _SCORING_VALUES = {
 def score_from_play(play):
     # A map of player ID to the score they receive on this play.
     scores_on_play = defaultdict(float)
-    if play.pass_touchdown:
+    if play.pass_touchdown == True:
        scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TOUCHDOWN_PASSING]
        scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TOUCHDOWN_RECEIVING]
-    if play.rush_touchdown:
+    if play.rush_touchdown == True:
         scores_on_play[play.rusher_player_id] += _SCORING_VALUES[_TOUCHDOWN_RUSHING]
-    if (play.kickoff_attempt or play.punt_attempt) and play.return_touchdown:
+    if (play.kickoff_attempt == True or play.punt_attempt == True) and play.return_touchdown == True:
         return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
         scores_on_play[return_id] += _SCORING_VALUES[_TOUCHDOWN_RETURN]
     if play.receiving_yards > 0:
@@ -108,7 +108,7 @@ def score_from_play(play):
             scores_on_play[play.receiver_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
             scores_on_play[play.passer_player_id] += _SCORING_VALUES[_TWO_POINT_CONVERSION]
 
-    if play.sack:
+    if play.sack == True:
         scores_on_play[play.defteam] += _SCORING_VALUES[_SACK]
 
     if play.field_goal_attempt and play.field_goal_result == "blocked":
@@ -125,7 +125,7 @@ def score_from_play(play):
     if play.extra_point_attempt and play.extra_point_result == "made":
         scores_on_play[play.kicker_player_id] += _SCORING_VALUES[_MADE_PAT]
 
-    if play.safety:
+    if play.safety == True:
         scores_on_play[play.defteam] += _SCORING_VALUES[_SAFETY]
 
     return scores_on_play
