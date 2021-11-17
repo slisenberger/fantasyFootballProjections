@@ -292,7 +292,6 @@ class GameState:
           self.sec_remaining = 15*60
 
   def game_end(self):
-      print("Game is over")
       self.game_over = True
       print("%s %s - %s %s" %(self.home_team, self.home_score, self.away_team, self.away_score))
 

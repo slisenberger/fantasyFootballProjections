@@ -184,10 +184,6 @@ def compute_yac_estimator(data):
     ]
     return yac_est_now
 
-
-
-
-
 def calculate_weekly(data, weekly_team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
     all_players = build_player_id_map(data)
@@ -209,7 +205,7 @@ def calculate_weekly(data, weekly_team_stats, season):
         .merge(weekly_carries, how="outer", on=["player_id", "week"])\
         .merge(weekly_red_zone_carries, how="outer", on=["player_id", "week"])\
         .merge(weekly_yards_per_carry, how="outer", on=["player_id", "week"])\
-        .merge(get_weekly_injuries(), how="outer", on=["player_id", "week"])
+        .merge(get_weekly_injuries(season), how="outer", on=["player_id", "week"])
 
     weekly_stats["available"] = weekly_stats["available"].fillna(True)
     roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "team"])
@@ -237,9 +233,9 @@ def compute_carry_percentage(row):
         return np.nan
 
 
-def get_weekly_injuries():
+def get_weekly_injuries(season):
     injured = ["IR", "IR-R", "IR-PUP", "IR-NFI", "Suspended", "COVID-IR", "Out"]
-    all_injuries = injuries.load_historical_data([2021])
+    all_injuries = injuries.load_historical_data([season])
     all_injuries = all_injuries.loc[all_injuries["status"].isin(injured)]
     all_injuries = all_injuries.assign(available=False)
     return all_injuries[["week", "player_id", "available"]]

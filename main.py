@@ -1,4 +1,4 @@
-
+import time
 import nfl_data_py
 import pandas as pd
 import random
@@ -17,29 +17,30 @@ from models import int_return, kicking, completion, playcall, receivers, rushers
 from collections import defaultdict
 
 # Calculates the fantasy leaders on a given dataframe.
-def calculate_fantasy_leaders(data):
+def calculate_fantasy_leaders(pbp_data, season, week):
+    data = pbp_data.loc[pbp_data.week == week]
+    data = data.loc[data.season == season]
+    data = data.loc[~(data.play_type.isin(['no_play']))]
     scores = defaultdict(float)
-    for i in range(len(data)):
+    for i in range(data.shape[0]):
         play_score = score.score_from_play(data.iloc[i])
         if play_score != None:
             for key in play_score.keys():
                 scores[key] += play_score[key]
 
     # Add defensive points
-    games = data.loc[data.description == "GAME_END"]
-    for i in range(len(games)):
-        row = data.iloc[i]
-        scores[row.away_team] += score.points_from_score(row.home_score)
-        scores[row.home_team] += score.points_from_score(row.away_score)
+    games = data.groupby("game_id").tail(1)[["game_id", "away_team", "home_team", "total_away_score", "total_home_score"]]
+    for i in range(games.shape[0]):
+        row = games.iloc[i]
+        scores[row.home_team] += score.points_from_score(row.total_away_score)
+        scores[row.away_team] += score.points_from_score(row.total_home_score)
+
 
     base_data = scores.items()
     all_scores = pd.DataFrame(base_data, columns=["player_id", "score"])
     all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False)
     print(all_scores_sorted)
     return all_scores_sorted
-
-
-
 
 
 def build_player_id_map(data):
@@ -122,28 +123,40 @@ def project_game(models, player_stats, team_stats, home, away, week):
     game_machine = game.GameState(models, home, away, home_player_stats, away_player_stats, home_team_stats, away_team_stats)
     return game_machine.play_game()
 
-def score_predictions(predictions, data, season, week):
-    scores = calculate_fantasy_leaders(data.loc[data.season == season].loc[data.week == week])
-    merged_plot = scores.merge(predictions, on="player_id", how="outer")
-    actual = merged_plot["score"].fillna(0)
-    predicted = merged_plot["median"].fillna(0)
-    plt.figure(figsize=(10, 10))
-    plt.scatter(predicted, actual, c='crimson')
+def score_predictions(predictions):
+    plot_predictions(predictions)
+    actual = predictions["score"].fillna(0)
+    predicted = predictions["mean"].fillna(0)
+    r2_all = r2_score(actual, predicted)
+    rmse_all = mean_squared_error(actual, predicted, squared=False)
+    all_data = []
+    all_data.append(pd.Series(dict(position="all", r2=r2_all, rmse=rmse_all)))
+    for position in ["QB", "TE", "WR", "RB", "K"]:
+        predicted = predictions.loc[predictions.position == position]["mean"].fillna(0)
+        actual = predictions.loc[predictions.position == position]["score"].fillna(0)
+        r2_pos = r2_score(actual, predicted)
+        rmse_pos = mean_squared_error(actual, predicted, squared=False)
+        all_data.append(pd.Series(dict(position=position, r2=r2_pos, rmse=rmse_pos)))
 
-    p1 = max(max(predicted), max(actual))
-    p2 = min(min(predicted), min(actual))
-    plt.plot([p1, p2], [p1, p2], 'b-')
-    plt.xlabel('Predicted Median Fantasy Scores', fontsize=15)
-    plt.ylabel('Actual Fantasy Scores', fontsize=15)
-    plt.axis('equal')
-    r2 = r2_score(actual, predicted)
-    rmse = mean_squared_error(actual, predicted, squared=False)
-    return pd.DataFrame(pd.Series(dict(season=season, week=week, r2=r2, rmse=rmse)))
+    return pd.concat(all_data)
 
-def compute_stats_and_export(projection_data, season):
-    projection_data = projection_data.rename(columns={"index": "player_id"})
+def plot_predictions(predictions):
+    actual = predictions["score"].fillna(0)
+    predicted = predictions["mean"].fillna(0)
+    fig, axs = plt.subplots(3, 2)
+    axs.flat[0].scatter(predicted, actual, c='crimson')
+    positions = ["QB", "TE", "WR", "RB", "K"]
+    for i in range(1, 6):
+        sub = axs.flat[i]
+        position = positions[i-1]
+        predicted = predictions.loc[predictions.position == position]["mean"]
+        actual = predictions.loc[predictions.position == position]["score"]
+        sub.scatter(predicted, actual)
+        sub.set_title(position)
+    plt.show()
 
-    projection_data = projection_data.fillna(0)
+
+def compute_stats_and_export(projection_data, season, week):
     median = projection_data.median(axis=1)
     percentile_10 = projection_data.quantile(.1, axis=1)
     percentile_25 = projection_data.quantile(.25, axis=1)
@@ -170,17 +183,53 @@ def compute_stats_and_export(projection_data, season):
     projection_data.loc[projection_data.position.isin(["RB", "WR", "TE"])].to_csv(base_path + "flex.csv")
     projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
 
+def project_ros(pbp_data, models, season,  cur_week, n_projections, version):
+    # Generate all remaining weeks projection data
+    all_weeks = []
+    for week in range(cur_week, 19):
+        print("Running projections on %s Week %s" % (season, week))
+        projection_data = project_week(pbp_data, models, 2021, week, n_projections).reset_index()
+        mean = projection_data.mean(axis=1)
+        percentile_90 = projection_data.quantile(.9, axis=1)
+        projection_data = projection_data.assign(mean=mean)
+        projection_data = projection_data.assign(percentile_90=percentile_90)
+        projection_data = projection_data.assign(week=week)
+        projection_data = projection_data.rename(columns={"index": "player_id"}).fillna(0)
+        all_weeks.append(projection_data)
+        compute_stats_and_export(projection_data, 2021, week)
+
+
+    all_ros = pd.concat(all_weeks)
+    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
+    all_ros = all_ros.merge(roster_data, on="player_id", how="left")
+    ros_sum = all_ros.groupby("player_id")["mean"].sum().to_frame("ros_total").sort_values(
+        by="ros_total", ascending=False).reset_index()
+    ros_mean = all_ros.groupby("player_id")["mean"].mean().to_frame("ros_mean").sort_values(
+        by="ros_mean", ascending=False).reset_index()
+    playoffs_mean = all_ros.loc[all_ros.week >= 15].groupby("player_id")["mean"].mean().to_frame("playoffs_mean").sort_values(
+        by="playoffs_mean", ascending=False).reset_index()
+
+
+    base_path = os.path.join("projections/", "v%s_" % version)
+    ros_sum.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "ros_total"]].to_csv(base_path + "ros_total.csv")
+    ros_mean.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "ros_mean"]].to_csv(base_path + "ros_mean.csv")
+    playoffs_mean.merge(roster_data, on="player_id")[["player_id", "player_name", "team", "position", "playoffs_mean"]].to_csv(base_path + "playoffs_mean.csv")
+
+
 
 # The primary entry point for the program. Initializes the majority of necessary data.
 if __name__ == '__main__':
     # Quiet the deprecation warnings in the command line a little.
     warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
-    loader.clean_and_save_data()
+    # loader.clean_and_save_data()
+    # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
-    pbp_data = loader.load_data([2018, 2019,2020,2021])
-    version = 202
-    n_projections = 500
+    pbp_data = loader.load_data([2018,2019,2020,2021])
+    version = 203
+    current_week = 17
+    season = 2021
+    n_projections = 5
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
@@ -191,23 +240,32 @@ if __name__ == '__main__':
     }
     models.update(receivers.build_or_load_all_air_yards_kdes())
 
-    # Run some tests on the methodology.
+    # Generate projections for all remaining weeks and ROS metadata.
+    project_ros(pbp_data, models, season, current_week, n_projections, version)
+
+    # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
+    all_prediction_data = []
     for season in range(2018, 2019):
-        for week in range(8, 9):
-            print("Running projections on %s %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 50).reset_index()
-            prediction_data = prediction_data.assign(median=prediction_data.median(axis=1))
+        for week in range(8, 18):
+            print("Running projections on %s Week %s" % (season, week))
+            prediction_data = project_week(pbp_data, models, season, week, 10).reset_index()
+            prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
-            scores = score_predictions(prediction_data, pbp_data, season, week).transpose()
-            all_scores.append(scores)
 
-    pd.concat(all_scores, axis=1).to_csv("projection_test_scores_v%s.csv" % version)
+            prediction_data = prediction_data.merge(
+                calculate_fantasy_leaders(pbp_data, season, week), on="player_id", how="outer")
+            roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
+            prediction_data = prediction_data.merge(roster_data, on="player_id", how="left")
+            prediction_data = prediction_data.assign(week=week)
+            prediction_data = prediction_data.assign(season=season)
+            all_prediction_data.append(prediction_data)
 
-    # Generate all remaining weeks projection data
-    for week in range(11,19):
-      projection_data = project_week(pbp_data, models, 2021, week, n_projections).reset_index()
-      compute_stats_and_export(projection_data, 2021)
+    scores = score_predictions(pd.concat(all_prediction_data))
+    scores.to_csv("projection_test_scores_v%s.csv" % version)
+
+
+
 
 
 

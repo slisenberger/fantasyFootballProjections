@@ -57,6 +57,7 @@ _SCORING_VALUES = {
     _FIELD_GOAL_50_OR_MORE_YDS: 5,
     _MADE_PAT: 1,
     _SACK: 1,
+    _SAFETY: 2,
     _INTERCEPTION: 2,
     _FUMBLE_RECOVERY: 2,
     _TOUCHDOWN_DEFENSE: 6,
@@ -92,12 +93,12 @@ def score_from_play(play):
     if play.kickoff_returner_player_id or play.punt_returner_id:
         return_id = play.kickoff_returner_player_id if play.kickoff_returner_player_id else play.punt_returner_player_id
         scores_on_play[return_id] += _SCORING_VALUES[_YARDS_RETURN] * play.return_yards
-    if play.interception:
+    if play.interception == True:
         scores_on_play[play.passer_player_id] += _SCORING_VALUES[_INTERCEPTION_THROW]
         scores_on_play[play.defteam] += _SCORING_VALUES[_INTERCEPTION]
-        if play.return_touchdown:
+        if play.return_touchdown == True:
             scores_on_play[play.defteam] += _SCORING_VALUES[_TOUCHDOWN_DEFENSE]
-    if play.fumble_lost:
+    if play.fumble_lost == True:
         scores_on_play[play.fumbled_1_player_id] += _SCORING_VALUES[_FUMBLE_LOST]
     if play.two_point_conv_result == "success":
 
@@ -113,12 +114,24 @@ def score_from_play(play):
     if play.field_goal_attempt and play.field_goal_result == "blocked":
         scores_on_play[play.defteam] += _SCORING_VALUES[_BLOCK_KICK]
 
+    if play.field_goal_attempt and play.field_goal_result == "made":
+        if play.kick_distance <= 39:
+            scores_on_play[play.kicker_player_id] += _SCORING_VALUES[_FIELD_GOAL_0_39_YDS]
+        elif play.kick_distance <= 49:
+            scores_on_play[play.kicker_player_id] += _SCORING_VALUES[_FIELD_GOAL_40_49_YDS]
+        else:
+            scores_on_play[play.kicker_player_id] += _SCORING_VALUES[_FIELD_GOAL_50_OR_MORE_YDS]
+
+    if play.extra_point_attempt and play.extra_point_result == "made":
+        scores_on_play[play.kicker_player_id] += _SCORING_VALUES[_MADE_PAT]
+
     if play.safety:
         scores_on_play[play.defteam] += _SCORING_VALUES[_SAFETY]
 
     return scores_on_play
 
 def points_from_score(score):
+    score = int(score)
     if score == 0:
         return _SCORING_VALUES[_POINTS_ALLOWED_0]
     elif score < 7:
