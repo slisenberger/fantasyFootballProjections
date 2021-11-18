@@ -147,8 +147,8 @@ def calculate(data, season):
     team_stats['defense_relative_air_yards'] = team_stats["defense_air_yards"] / lg_avg_air_yards
     team_stats['defense_relative_int_rate'] = team_stats['defense_int_rate'] / lvg_avg_int_rate
     team_stats['defense_relative_int_rate_est'] = team_stats['defense_int_rate_est'] / lvg_avg_int_rate
-    team_stats['offense_relative_sack_rate'] = team_stats['offense_sack_rate'] / lvg_avg_sack_rate
-    team_stats['defense_relative_sack_rate'] = team_stats['defense_sack_rate'] / lvg_avg_sack_rate
+    team_stats['offense_relative_sack_rate'] = team_stats['offense_sacks_per_dropback'] / lvg_avg_sack_rate
+    team_stats['defense_relative_sack_rate'] = team_stats['defense_sacks_per_dropback'] / lvg_avg_sack_rate
     team_stats['offense_relative_sack_rate_est'] = team_stats['offense_sack_rate_est'] / lvg_avg_sack_rate
     team_stats['defense_relative_sack_rate_est'] = team_stats['defense_sack_rate_est'] / lvg_avg_sack_rate
     if season <= 2019:
@@ -158,7 +158,7 @@ def calculate(data, season):
     team_stats.to_csv("team_stats.csv")
     return team_stats
 
-def calculate_weekly(data):
+def calculate_weekly(data, season):
     targets_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
         ["posteam", "week"])["receiver_player_id"].count().sort_values().to_frame(name="targets_wk").reset_index()\
         .rename(columns={'posteam': 'team'})
@@ -167,6 +167,8 @@ def calculate_weekly(data):
         .rename(columns={'posteam': 'team'})
 
     weekly_data = targets_weekly.merge(carries_weekly, on=["team", "week"])
+    if season <= 2019:
+      weekly_data['team'] = weekly_data["team"].replace("LV", "OAK")
     return weekly_data
 
 def compute_offense_poe_estimator(data):

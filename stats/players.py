@@ -16,7 +16,7 @@ def calculate(data, team_stats, season):
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
 
-    weekly_team_stats = teams.calculate_weekly(data)
+    weekly_team_stats = teams.calculate_weekly(data, season)
     weekly_player_stats = calculate_weekly(data, weekly_team_stats, season)
 
     receiver_targets = data.groupby("receiver_player_id")\
