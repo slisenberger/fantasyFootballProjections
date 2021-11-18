@@ -36,6 +36,7 @@ class GameState:
           "ALL": models["ALL"],
       }
       self.rush_model = models["rush_model"]
+      self.scramble_model = models["scramble_model"]
       self.int_return_model = models["int_return_model"]
 
 
@@ -105,6 +106,7 @@ class GameState:
     td = False
     sack = False
     interception = False
+    scramble = False
     if playcall == "run":
         carrier = self.choose_carrier()
         carrier_id = carrier["player_id"].values[0]
@@ -121,24 +123,27 @@ class GameState:
             sack = True
             yards = -7
 
+        scramble = not sack and self.is_scramble(qb)
+        if scramble:
+            yards = self.compute_scramble_yards(qb)
 
-        if not sack:
-            if random.random() < defense_int_rate:
-                interception = True
+        if not sack and not scramble:
+              if random.random() < defense_int_rate:
+                  interception = True
 
-            target = self.choose_target()
-            target_id = target["player_id"].values[0]
+              target = self.choose_target()
+              target_id = target["player_id"].values[0]
 
-            air_yards = self.compute_air_yards(target)
+              air_yards = self.compute_air_yards(target)
 
-            if random.random() < defense_int_rate:
-                interception = True
+              if random.random() < defense_int_rate:
+                  interception = True
 
-            is_complete = not interception and self.is_complete(air_yards, target)
+              is_complete = not interception and self.is_complete(air_yards, target)
 
-            if is_complete:
-                yac = self.compute_yac(target)
-                yards = air_yards + yac
+              if is_complete:
+                  yac = self.compute_yac(target)
+                  yards = air_yards + yac
 
 
     if playcall == "punt":
@@ -219,6 +224,15 @@ class GameState:
             if self.extra_point():
             # TODO: model this
               self.fantasy_points[k_id] += 1
+
+    if scramble:
+        self.fantasy_points[qb_id] += .1 * yards
+        if td:
+            self.fantasy_points[qb_id] += 6
+            if self.extra_point():
+                # TODO: model this
+                self.fantasy_points[k_id] += 1
+
     if interception:
         self.fantasy_points[qb_id] -= 1.5
         self.fantasy_points[self.defteam()] += 2
@@ -282,11 +296,17 @@ class GameState:
           # Experiment with variable clock times in the 4th quarter for
           # leading and trailing teams. Leading teams will try to use
           # all of their clock. Trailing teams will use less.
-          if self.quarter() == 4:
+          # This is very hacky, but will hopefully continue to juice offenses
+          # by adding more passing plays.
+          if self.quarter == 4:
               if self.is_winning(self.posteam):
                   clock_burn = 45
               else:
-                  clock_burn = 30
+                  # Assume plays stop out of bounds regularly.
+                  if self.sec_remaining < 5*60:
+                      clock_burn = 15
+                  else:
+                      clock_burn = 30
           else:
               clock_burn = 35
 
@@ -369,6 +389,10 @@ class GameState:
       tgt = eligible_targets.loc[eligible_targets["player_id"] == target]
       return tgt
 
+  def is_scramble(self, qb):
+      scramble_rate = qb["scramble_rate_est"].values[0]
+      return random.random() < scramble_rate
+
   def choose_carrier(self):
       pos_player_stats = self.get_pos_player_stats()
       eligible_carriers = pos_player_stats.loc[pos_player_stats["carry_percentage"] > 0][[
@@ -379,7 +403,8 @@ class GameState:
 
   def choose_quarterback(self):
       pos_player_stats = self.get_pos_player_stats()
-      eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == "QB"][["player_id", "player_name", "cpoe_est", "pass_attempts"]]
+      eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == "QB"][
+          ["player_id", "player_name", "cpoe_est", "pass_attempts", "scramble_rate_est"]]
       qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
       return qb
 
@@ -431,8 +456,6 @@ class GameState:
 
 
   def compute_carry_yards(self, carrier):
-
-      carries = carrier["carries"].values[0]
       # TODO: Sample more and keep the largest to simulate big carries for backs who get them.
       yards = self.rush_model.sample(n_samples=1)[0]
       # Come up with a way to handle small sample high yac players
@@ -442,6 +465,11 @@ class GameState:
       yards *= defense_relative_ypc
       yards *= relative_ypc_est
 
+      return yards[0]
+
+  def compute_scramble_yards(self, qb):
+      yards = self.scramble_model.sample(n_samples=1)[0]
+      # Come up with a way to handle small sample high yac players
       return yards[0]
 
 
