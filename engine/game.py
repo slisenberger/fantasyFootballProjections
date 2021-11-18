@@ -134,7 +134,7 @@ class GameState:
             if random.random() < defense_int_rate:
                 interception = True
 
-            is_complete = not interception and self.is_complete(air_yards)
+            is_complete = not interception and self.is_complete(air_yards, target)
 
             if is_complete:
                 yac = self.compute_yac(target)
@@ -342,8 +342,13 @@ class GameState:
       eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][
           ["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est",
            "targets", "relative_yac", "relative_yac_est", "receiver_cpoe_est"]]
-      target = random.choices(eligible_targets["player_id"].tolist(), weights=eligible_targets["target_share_est"].tolist(), k=1)[0]
-      return eligible_targets.loc[eligible_targets["player_id"] == target]
+      target = random.choices(
+          eligible_targets["player_id"].tolist(),
+          weights=eligible_targets["target_share_est"].tolist(),
+          k=1)[0]
+
+      tgt = eligible_targets.loc[eligible_targets["player_id"] == target]
+      return tgt
 
   def choose_carrier(self):
       pos_player_stats = self.get_pos_player_stats()
@@ -385,9 +390,10 @@ class GameState:
           if self.yard_line <= 20:
               base *= defense_relative_air_yards
 
-      # If the total is too high to be realistic for the back of the end zone, try again.
+      # If the total is too high to be realistic for the back of the end zone, cap it at max end zone.
       if self.yard_line - base <= -10:
-          return self.compute_air_yards(target)
+          return self.yard_line + 10
+
       return base
 
   def compute_yac(self, target):
@@ -505,7 +511,7 @@ class GameState:
 
       target_cpoe = target["receiver_cpoe_est"].values[0] / 100.0
       # TODO: Find a less arbitrary way of assigning credit to qb and receiver
-      offense_cpoe = .75 * qb_cpoe + .25 * receiver_cpoe
+      offense_cpoe = .75 * qb_cpoe + .25 * target_cpoe
       base_probs[COMPLETE_INDEX] += offense_cpoe
       base_probs[INCOMPLETE_INDEX] -= offense_cpoe
 
