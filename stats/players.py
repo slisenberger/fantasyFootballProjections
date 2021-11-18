@@ -12,7 +12,7 @@ from stats.util import prepend
 
 def calculate(data, team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
-    lg_avg_ypc = data["rushing_yards"].mean()
+    lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
 
@@ -43,16 +43,16 @@ def calculate(data, team_stats, season):
         .rename(columns={'receiver_player_id': 'player_id'})
     yac_est = compute_yac_estimator(data)
     receiver_cpoe_est = compute_receiver_cpoe_estimator(data)
-    rushing_carries = data.groupby("rusher_player_id").size().sort_values()\
+    rushing_carries = data.loc[data.rush == 1].groupby("rusher_player_id").size().sort_values()\
         .to_frame(name="carries").reset_index().rename(columns={'rusher_player_id': 'player_id'})
-    yards_per_carry = data.groupby("rusher_player_id")["rushing_yards"].mean()\
+    yards_per_carry = data.loc[data.rush == 1].groupby("rusher_player_id")["rushing_yards"].mean()\
         .to_frame(name="yards_per_carry").reset_index()\
         .rename(columns={'rusher_player_id': 'player_id'})
     ypc_est = compute_ypc_estimator(data)
-    red_zone_carries = data.loc[data.yardline_100 <= 10].groupby("rusher_player_id").size()\
+    red_zone_carries = data.loc[data.rush==1].loc[data.yardline_100 <= 10].groupby("rusher_player_id").size()\
         .sort_values().to_frame(name="red_zone_carries").reset_index()\
         .rename(columns={'rusher_player_id': 'player_id'})
-    big_carries = data.loc[data.rushing_yards >= 10].groupby("rusher_player_id").size() \
+    big_carries = data.loc[data.rush == 1].loc[data.rushing_yards >= 10].groupby("rusher_player_id").size() \
         .sort_values().to_frame(name="big_carries").reset_index() \
         .rename(columns={'rusher_player_id': 'player_id'})
     cpoe = data.groupby("passer_player_id")["cpoe"].mean() \
@@ -158,6 +158,7 @@ def compute_air_yards_estimator(data):
     return ay_est_now
 
 def compute_ypc_estimator(data):
+    data = data.loc[data.rush == 1]
     ypc_prior = data["rushing_yards"].mean()
     ypc_span = 160
     biased_ypc = data.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda d: prepend(d, ypc_prior)).to_frame()
@@ -189,13 +190,13 @@ def calculate_weekly(data, weekly_team_stats, season):
     all_players = build_player_id_map(data)
     all_teams = build_player_team_map(data)
     weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
-    weekly_rusher_data = data.groupby(["rusher_player_id", "week"])
+    weekly_rusher_data = data.loc[data.rush == 1].groupby(["rusher_player_id", "week"])
     weekly_targets = weekly_receiver_data.size().sort_values().to_frame(name='targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='red_zone_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_deep_targets = data.loc[data.air_yards >= 30].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='deep_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_air_yards_target = weekly_receiver_data["air_yards"].mean().sort_values().to_frame(name='air_yards_per_target_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_carries = weekly_rusher_data.size().sort_values().to_frame(name="carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
-    weekly_red_zone_carries = data.loc[data.yardline_100 <= 10].groupby(["rusher_player_id", "week"]).size().sort_values().to_frame(name="red_zone_carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
+    weekly_red_zone_carries = data.loc[data.rush == 1].loc[data.yardline_100 <= 10].groupby(["rusher_player_id", "week"]).size().sort_values().to_frame(name="red_zone_carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
     weekly_yards_per_carry = weekly_rusher_data["rushing_yards"].mean().sort_values().to_frame(name='yards_per_carry_wk').reset_index().rename(columns={'rusher_player_id':'player_id'})
 
     weekly_stats = weekly_targets\
