@@ -4,7 +4,8 @@ from data import loader
 
 # Calculate team statistics that are used to determine tendencies.
 def calculate(data, season):
-    lg_avg_ypc = data["rushing_yards"].mean()
+    data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
+    lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
     lvg_avg_int_rate = data.loc[data.interception == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
@@ -21,18 +22,18 @@ def calculate(data, season):
     goal_line_pass_happiness_offense = data.loc[data.yardline_100 <= 10].groupby("posteam")["pass_oe"].mean().sort_values()\
         .to_frame(name="goal_offense_pass_oe").reset_index()\
         .rename(columns={'posteam': 'team'})
-    total_relevant_snaps_offense = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby("posteam")\
+    total_relevant_snaps_offense = data.groupby("posteam")\
         .size().sort_values().to_frame(name="offense_snaps").reset_index()\
         .rename(columns={'posteam': 'team'})
     dropbacks = data.loc[(data.play_type.isin(['pass']))].groupby("posteam").size().sort_values().to_frame(name="dropbacks")\
          .reset_index().rename(columns={'posteam': 'team'})
-    total_relevant_snaps_defense = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    total_relevant_snaps_defense = data.groupby(
         "defteam").size().sort_values().to_frame(name="defense_snaps").reset_index()\
         .rename(columns={'defteam': 'team'})
     dropbacks_def = data.loc[(data.play_type.isin(['pass']))].groupby("defteam").size().sort_values().to_frame(
         name="dropbacks_def") \
         .reset_index().rename(columns={'defteam': 'team'})
-    mean_yac = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    mean_yac = data.groupby(
         "defteam")["yards_after_catch"].mean().sort_values().to_frame(name="defense_yac").reset_index()\
         .rename(columns={'defteam': 'team'})
     yac_est = compute_defense_yac_estimator(data)
@@ -40,50 +41,50 @@ def calculate(data, season):
         "defteam")["cpoe"].mean().sort_values().to_frame(name="defense_cpoe").reset_index() \
         .rename(columns={'defteam': 'team'})
     cpoe_est = compute_defense_cpoe_estimator(data)
-    mean_air_yards = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    mean_air_yards = data.groupby(
         "defteam")["air_yards"].mean().sort_values().to_frame(name="defense_air_yards").reset_index() \
         .rename(columns={'defteam': 'team'})
-    mean_ypc = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    mean_ypc = data.loc[data.rush == 1].groupby(
         "defteam")["rushing_yards"].mean().sort_values().to_frame(name="defense_ypc").reset_index() \
         .rename(columns={'defteam': 'team'})
     ypc_est = compute_defense_ypc_estimator(data)
-    targets = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    targets = data.groupby(
         "posteam")["receiver_player_id"].count().sort_values().to_frame(name="targets").reset_index()\
         .rename(columns={'posteam': 'team'})
-    carries = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    carries = data.loc[data.rush == 1].groupby(
         "posteam")["rusher_player_id"].count().sort_values().to_frame(name="carries").reset_index() \
         .rename(columns={'posteam': 'team'})
-    red_zone_targets = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].loc[data.yardline_100 <= 10].groupby(
+    red_zone_targets = data.loc[data.yardline_100 <= 10].groupby(
         "posteam")["receiver_player_id"].count().sort_values().to_frame(name="red_zone_targets").reset_index() \
         .rename(columns={'posteam': 'team'})
-    red_zone_carries = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].loc[data.yardline_100 <= 10].groupby(
+    red_zone_carries = data.loc[data.rush == 1].loc[data.yardline_100 <= 10].groupby(
         "posteam")["rusher_player_id"].count().sort_values().to_frame(name="red_zone_carries").reset_index() \
         .rename(columns={'posteam': 'team'})
-    deep_targets = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].loc[data.air_yards >= 30].groupby(
+    deep_targets = data.loc[data.rush == 1].loc[(data.play_type.isin(['no_play', 'pass', 'run']))].loc[data.air_yards >= 30].groupby(
         "posteam")["receiver_player_id"].count().sort_values().to_frame(name="deep_targets").reset_index() \
         .rename(columns={'posteam': 'team'})
-    def_sacks = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    def_sacks = data.groupby(
         "defteam")["sack"].sum().sort_values().to_frame(name="defense_sacks").reset_index()\
         .rename(columns={'defteam': 'team'})
-    def_qb_hits = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    def_qb_hits = data.groupby(
         "defteam")["qb_hit"].sum().sort_values().to_frame(name="defense_qb_hits").reset_index() \
         .rename(columns={'defteam': 'team'})
     def_int = data.loc[data.play_type.isin(['pass'])].groupby(
         "defteam")["interception"].sum().sort_values().to_frame(name="def_ints").reset_index() \
         .rename(columns={'defteam': 'team'})
-    off_sacks = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    off_sacks = data.groupby(
         "posteam")["sack"].sum().sort_values().to_frame(name="offense_sacks").reset_index() \
         .rename(columns={'posteam': 'team'})
-    off_qb_hits = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    off_qb_hits = data.groupby(
         "posteam")["qb_hit"].sum().sort_values().to_frame(name="offense_qb_hits").reset_index() \
         .rename(columns={'posteam': 'team'})
-    off_scrambles = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    off_scrambles = data.groupby(
         "posteam")["qb_scramble"].sum().sort_values().to_frame(name="offense_scrambles").reset_index() \
         .rename(columns={'posteam': 'team'})
-    def_tfl = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    def_tfl = data.groupby(
         "defteam")["tackled_for_loss"].sum().sort_values().to_frame(name="defense_tfl").reset_index() \
         .rename(columns={'defteam': 'team'})
-    off_tfl = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    off_tfl = data.groupby(
         "posteam")["tackled_for_loss"].sum().sort_values().to_frame(name="offense_tfl").reset_index() \
         .rename(columns={'posteam': 'team'})
     def_holds_drawn = data.loc[data['penalty_type'].str.contains("Offensive Holding", na=False)].groupby("defteam")["penalty"]\
@@ -159,10 +160,10 @@ def calculate(data, season):
     return team_stats
 
 def calculate_weekly(data, season):
-    targets_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    targets_weekly = data.groupby(
         ["posteam", "week"])["receiver_player_id"].count().sort_values().to_frame(name="targets_wk").reset_index()\
         .rename(columns={'posteam': 'team'})
-    carries_weekly = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))].groupby(
+    carries_weekly = data.loc[data.rush == 1].groupby(
         ["posteam", "week"])["rusher_player_id"].count().sort_values().to_frame(name="carries_wk").reset_index()\
         .rename(columns={'posteam': 'team'})
 
@@ -207,6 +208,7 @@ def compute_defense_yac_estimator(data):
     return yac_est_now
 
 def compute_defense_ypc_estimator(data):
+    data = data.loc[data.rush == 1]
     ypc_prior = data["rushing_yards"].mean()
     ypc_span = 500
     biased_ypc = data.groupby(["defteam"])["rushing_yards"].apply(lambda d: prepend(d, ypc_prior)).to_frame()

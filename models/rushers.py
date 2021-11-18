@@ -27,6 +27,7 @@ def rusher_data():
                              compression='gzip', low_memory=False)
 
         data = data.append(i_data, sort=True)
+    data = data.loc[data.rush == 1]
     data.reset_index(drop=True, inplace=True)
     return data
 

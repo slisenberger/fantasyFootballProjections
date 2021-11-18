@@ -277,7 +277,20 @@ class GameState:
       elif playcall == "punt":
           self.sec_remaining -= 5
       else:
-          self.sec_remaining -= 35
+
+          clock_burn = 0
+          # Experiment with variable clock times in the 4th quarter for
+          # leading and trailing teams. Leading teams will try to use
+          # all of their clock. Trailing teams will use less.
+          if self.quarter() == 4:
+              if self.is_winning(self.posteam):
+                  clock_burn = 45
+              else:
+                  clock_burn = 30
+          else:
+              clock_burn = 35
+
+          self.sec_remaining -= clock_burn
 
       # Check for the 2 minute warning.
       if self.quarter in [2,4] and (self.sec_remaining < 120 and original_sec_remaining > 120):
@@ -290,6 +303,12 @@ class GameState:
               self.game_end()
           self.quarter += 1
           self.sec_remaining = 15*60
+
+  def is_winning(self, team):
+      if self.home_team == team:
+          return self.home_score > self.away_score
+      else:
+          return self.away_score > self.home_score
 
   def game_end(self):
       self.game_over = True
