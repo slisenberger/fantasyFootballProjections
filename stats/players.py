@@ -15,6 +15,7 @@ def calculate(data, team_stats, season):
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
+    lg_avg_scramble_yards = data.loc[data.qb_scramble == 1]["rushing_yards"].mean()
 
     weekly_team_stats = teams.calculate_weekly(data, season)
     weekly_player_stats = calculate_weekly(data, weekly_team_stats, season)
@@ -55,6 +56,7 @@ def calculate(data, team_stats, season):
     big_carries = data.loc[data.rush == 1].loc[data.rushing_yards >= 10].groupby("rusher_player_id").size() \
         .sort_values().to_frame(name="big_carries").reset_index() \
         .rename(columns={'rusher_player_id': 'player_id'})
+    big_carry_rate_est = compute_big_carry_rate_estimator(data)
     cpoe = data.groupby("passer_player_id")["cpoe"].mean() \
         .to_frame(name="cpoe").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
@@ -65,6 +67,8 @@ def calculate(data, team_stats, season):
     pass_attempts = data.groupby("passer_player_id").size() \
         .to_frame(name="pass_attempts").reset_index() \
         .rename(columns={'passer_player_id': 'player_id'})
+    scramble_rate_estimator = compute_scramble_rate_estimator(data)
+    yards_per_scramble_estimator = compute_yards_per_scramble_estimator(data)
     kick_attempts = data.loc[data.field_goal_attempt == True].groupby("kicker_player_id").size() \
         .to_frame(name="kick_attempts").reset_index() \
         .rename(columns={'kicker_player_id': 'player_id'})
@@ -85,9 +89,12 @@ def calculate(data, team_stats, season):
         .merge(ypc_est, how="outer", on="player_id") \
         .merge(red_zone_carries, how="outer", on="player_id") \
         .merge(big_carries, how="outer", on="player_id")\
+        .merge(big_carry_rate_est, how="outer", on="player_id") \
         .merge(cpoe, how="outer", on="player_id") \
         .merge(cpoe_est, how="outer", on="player_id") \
         .merge(pass_attempts, how="outer", on="player_id")\
+        .merge(scramble_rate_estimator, how="outer", on="player_id") \
+        .merge(yards_per_scramble_estimator, how="outer", on="player_id") \
         .merge(kick_attempts, how="outer", on="player_id")
     offense_stats['big_carry_percentage'] = offense_stats["big_carries"] / offense_stats["carries"]
     #offense_stats['relative_big_carry_percentage'] = offense_stats['big_carry_percentage'] / lg_big_carry_percentage
@@ -113,6 +120,7 @@ def calculate(data, team_stats, season):
     offense_stats['relative_yac_est'] = offense_stats["yac_est"] / lg_avg_yac
     offense_stats['relative_air_yards'] = offense_stats["air_yards_per_target"] / lg_avg_air_yards
     offense_stats['relative_air_yards_est'] = offense_stats["air_yards_est"] / lg_avg_air_yards
+    offense_stats['relative_yards_per_scramble_est'] = offense_stats["yards_per_scramble_est"] / lg_avg_scramble_yards
 
     # Experimental modeling to use MLM. Will take some work to get right.
     # estimate_cpoe_attribution(data)
@@ -138,6 +146,37 @@ def compute_cpoe_estimator(data):
     cpoe_est = biased_cpoe.groupby(["passer_player_id"])["cpoe"].apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean()).to_frame()
     cpoe_est_now = cpoe_est.groupby(["passer_player_id"]).tail(1).reset_index().rename(columns={'passer_player_id': 'player_id', 'cpoe': 'cpoe_est'})[["player_id", "cpoe_est"]]
     return cpoe_est_now
+
+def compute_scramble_rate_estimator(data):
+    data = data.loc[data["pass"] == 1]
+    scramble_prior = data.loc[data.qb_scramble == True].shape[0] / data.shape[0]
+    # Essentially, use the last 500 pass window to judge completion.
+    scramble_span = 500
+    biased_scramble = data.groupby(["passer_id"])["qb_scramble"].apply(lambda d: prepend(d, scramble_prior)).to_frame()
+    scramble_est = biased_scramble.groupby(["passer_id"])["qb_scramble"].apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean()).to_frame()
+    return scramble_est.groupby(["passer_id"]).tail(1).reset_index().rename(
+        columns={'passer_id': 'player_id', 'qb_scramble': 'scramble_rate_est'})[["player_id", "scramble_rate_est"]]
+
+def compute_big_carry_rate_estimator(data):
+    # Only use rushes, avoid QB scrambles.
+    data = data.loc[data["rush"] == 1]
+    data.loc[data.rushing_yards >=10, "big_carry"] = 1
+    big_carry_prior = data.loc[data.big_carry == 1].shape[0] / data.shape[0]
+    big_carry_span = 160
+    biased = data.groupby(["rusher_player_id"])["big_carry"].apply(lambda d: prepend(d, big_carry_prior)).to_frame()
+    big_carry_est = biased.groupby(["rusher_player_id"])["big_carry"].apply(lambda x: x.ewm(span=big_carry_span, adjust=False).mean()).to_frame()
+    return big_carry_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(
+        columns={'rusher_player_id': 'player_id', 'big_carry': 'big_carry_rate_est'})[["player_id", "big_carry_rate_est"]]
+
+def compute_yards_per_scramble_estimator(data):
+    data = data.loc[data["qb_scramble"] == 1]
+    # Essentially, use the last 100 scramble window to judge talent.
+    scramble_prior = data["rushing_yards"].mean()
+    scramble_span = 160
+    biased_scramble = data.groupby(["passer_id"])["rushing_yards"].apply(lambda d: prepend(d, scramble_prior)).to_frame()
+    scramble_est = biased_scramble.groupby(["passer_id"])["rushing_yards"].apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean()).to_frame()
+    return scramble_est.groupby(["passer_id"]).tail(1).reset_index().rename(
+        columns={'passer_id': 'player_id', 'rushing_yards': 'yards_per_scramble_est'})[["player_id", "yards_per_scramble_est"]]
 
 def compute_receiver_cpoe_estimator(data):
     cpoe_prior = 0

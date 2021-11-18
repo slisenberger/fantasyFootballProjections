@@ -60,7 +60,7 @@ def calculate(data, season):
     red_zone_carries = data.loc[data.rush == 1].loc[data.yardline_100 <= 10].groupby(
         "posteam")["rusher_player_id"].count().sort_values().to_frame(name="red_zone_carries").reset_index() \
         .rename(columns={'posteam': 'team'})
-    deep_targets = data.loc[data.rush == 1].loc[(data.play_type.isin(['no_play', 'pass', 'run']))].loc[data.air_yards >= 30].groupby(
+    deep_targets = data.loc[data.air_yards >= 30].groupby(
         "posteam")["receiver_player_id"].count().sort_values().to_frame(name="deep_targets").reset_index() \
         .rename(columns={'posteam': 'team'})
     def_sacks = data.groupby(
@@ -219,25 +219,25 @@ def compute_defense_ypc_estimator(data):
 def compute_defense_int_rate_estimator(data):
     int_prior = data.loc[data.interception == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
     int_span=1000
-    data = data.loc[data.play_type.isin(["pass"])]
+    data = data.loc[data["pass"] == 1]
     biased_int = data.groupby(["defteam"])["interception"].apply(lambda d: prepend(d, int_prior)).to_frame()
     int_est = biased_int.groupby(["defteam"])["interception"].apply(lambda x: x.ewm(span=int_span, adjust=False).mean()).to_frame()
     int_est_now = int_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'interception': 'defense_int_rate_est'})[["team", "defense_int_rate_est"]]
     return int_est_now
 
 def compute_defense_sack_rate_estimator(data):
-    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
+    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data["pass"] == 1].shape[0]
     sack_span=1000
-    data = data.loc[data.play_type.isin(["pass"])]
+    data = data.loc[data["pass"] == 1]
     biased_sack = data.groupby(["defteam"])["sack"].apply(lambda d: prepend(d, sack_prior)).to_frame()
     sack_est = biased_sack.groupby(["defteam"])["sack"].apply(lambda x: x.ewm(span=sack_span, adjust=False).mean()).to_frame()
     sack_est_now = sack_est.groupby(["defteam"]).tail(1).reset_index().rename(columns={'defteam': 'team', 'sack': 'defense_sack_rate_est'})[["team", "defense_sack_rate_est"]]
     return sack_est_now
 
 def compute_offense_sack_rate_estimator(data):
-    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data.play_type.isin(["pass"])].shape[0]
+    sack_prior = data.loc[data.sack == True].shape[0] / data.loc[data["pass"] == 1].shape[0]
     sack_span=1000
-    data = data.loc[data.play_type.isin(["pass"])]
+    data = data.loc[data["pass"] == 1]
     biased_sack = data.groupby(["posteam"])["sack"].apply(lambda d: prepend(d, sack_prior)).to_frame()
     sack_est = biased_sack.groupby(["posteam"])["sack"].apply(lambda x: x.ewm(span=sack_span, adjust=False).mean()).to_frame()
     sack_est_now = sack_est.groupby(["posteam"]).tail(1).reset_index().rename(columns={'posteam': 'team', 'sack': 'offense_sack_rate_est'})[["team", "offense_sack_rate_est"]]

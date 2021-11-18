@@ -7,15 +7,28 @@ import numpy as np
 import joblib
 
 rush_model_name = "models/trained_models/rushing_yards_kde"
+scramble_model_name = "models/trained_models/scramble_yards_kde"
 
 def build_or_load_rush_kde():
     try:
         return joblib.load(rush_model_name)
     except FileNotFoundError:
         data = rusher_data()
+        data = data.loc[data.rush == 1]
         all_rush = data["rushing_yards"].dropna()
         model = fit_kde(all_rush)
         joblib.dump(model, rush_model_name)
+        return model
+
+def build_or_load_scramble_kde():
+    try:
+        return joblib.load(scramble_model_name)
+    except FileNotFoundError:
+        data = rusher_data()
+        data = data.loc[data.qb_scramble == 1]
+        all_rush = data["rushing_yards"].dropna()
+        model = fit_kde(all_rush)
+        joblib.dump(model, scramble_model_name)
         return model
 
 
@@ -27,7 +40,6 @@ def rusher_data():
                              compression='gzip', low_memory=False)
 
         data = data.append(i_data, sort=True)
-    data = data.loc[data.rush == 1]
     data.reset_index(drop=True, inplace=True)
     return data
 

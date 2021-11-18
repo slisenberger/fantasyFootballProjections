@@ -80,7 +80,7 @@ def project_week(data, models, season, week, n):
         # Rushing data
         "carry_share_est", "carry_percentage", "big_carry_percentage","carries", "relative_ypc", "relative_ypc_est",
         # Passing data
-        "cpoe_est", "pass_attempts",
+        "cpoe_est", "pass_attempts", "scramble_rate_est", "yards_per_scramble_est",
         # Kicking data
         "kick_attempts"]]
     team_stats = team_stats[[
@@ -182,20 +182,20 @@ def plot_predictions(predictions):
 
 def compute_stats_and_export(projection_data, season, week):
     median = projection_data.median(axis=1)
-    percentile_10 = projection_data.quantile(.1, axis=1)
+    percentile_12 = projection_data.quantile(.125, axis=1)
     percentile_25 = projection_data.quantile(.25, axis=1)
     percentile_75 = projection_data.quantile(.75, axis=1)
-    percentile_90 = projection_data.quantile(.9, axis=1)
+    percentile_88 = projection_data.quantile(.875, axis=1)
     projection_data = projection_data.assign(median=median)
-    projection_data = projection_data.assign(percentile_10=percentile_10)
+    projection_data = projection_data.assign(percentile_10=percentile_12)
     projection_data = projection_data.assign(percentile_25=percentile_25)
     projection_data = projection_data.assign(percentile_75=percentile_75)
-    projection_data = projection_data.assign(percentile_90=percentile_90)
+    projection_data = projection_data.assign(percentile_90=percentile_88)
     roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
     projection_data = projection_data.merge(roster_data, on="player_id", how="left")
     projection_data = projection_data.sort_values(by="median", ascending=False)[
-        ["player_id", "player_name", "team", "position", "percentile_10", "percentile_25", "median", "percentile_75",
-         "percentile_90"]]
+        ["player_id", "player_name", "team", "position", "percentile_12", "percentile_25", "median", "percentile_75",
+         "percentile_88"]]
 
     projection_data.to_csv("projections_week_%s_v%s.csv" % (week, version))
     base_path = os.path.join("projections/", "w%s_v%s_" % (week, version))
@@ -264,14 +264,12 @@ if __name__ == '__main__':
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
         'rush_model': rushers.build_or_load_rush_kde(),
+        'scramble_model': rushers.build_or_load_scramble_kde(),
         'completion_model': completion.build_or_load_completion_model(),
         'field_goal_model': kicking.build_or_load_kicking_model(),
         'int_return_model': int_return.build_or_load_int_return_kde(),
     }
     models.update(receivers.build_or_load_all_air_yards_kdes())
-
-    # Generate projections for all remaining weeks and ROS metadata.
-    # project_ros(pbp_data, models, season, current_week, n_projections, version)
 
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
@@ -279,7 +277,7 @@ if __name__ == '__main__':
     for season in range(2018, 2021):
         for week in range(8, 18):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 32).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 64).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
@@ -297,7 +295,8 @@ if __name__ == '__main__':
     scores.to_csv("projection_test_scores_v%s.csv" % version)
     full_data[["player_id", "player_name", "position", "team", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
-
+    # Generate projections for all remaining weeks and ROS metadata.
+    project_ros(pbp_data, models, season, current_week, n_projections, version)
 
 
 
