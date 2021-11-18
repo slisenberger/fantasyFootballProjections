@@ -156,19 +156,26 @@ def plot_predictions(predictions):
         sub.scatter(predicted, actual)
         sub.set_title(position)
 
-    predictions["p10"] = predictions.quantile(.1, axis=1) > predictions["score"]
+    # Values ranging from 1 in 16, 1 in 8, 1 in 4, 1 in 2. This can be interpreted as
+    # once per season, twice per season, etc..
+    predictions["p6"]  = predictions.quantile(.0625, axis=1) > predictions["score"]
+    predictions["p12"] = predictions.quantile(.125, axis=1) > predictions["score"]
     predictions["p25"] = predictions.quantile(.25, axis=1) > predictions["score"]
     predictions["p50"] = predictions.quantile(.5, axis=1) > predictions["score"]
     predictions["p75"] = predictions.quantile(.75, axis=1) > predictions["score"]
-    predictions["p90"] = predictions.quantile(.9, axis=1) > predictions["score"]
+    predictions["p88"] = predictions.quantile(.875, axis=1) > predictions["score"]
+    predictions["p94"] = predictions.quantile(.9375, axis=1) > predictions["score"]
 
-    probs = [.1,] * predictions.shape[0] +\
+    probs = [.0625] * predictions.shape[0] +\
+            [.125] * predictions.shape[0] +\
             [.25] * predictions.shape[0] +\
             [.5] * predictions.shape[0] + \
             [.75] * predictions.shape[0] + \
-            [.9] * predictions.shape[0]
+            [.875] * predictions.shape[0] + \
+            [.9375] * predictions.shape[0]
     disp = CalibrationDisplay.from_predictions(
-        pd.concat([predictions["p10"], predictions["p25"], predictions["p50"], predictions["p75"], predictions["p90"]]),
+        pd.concat([predictions["p6"], predictions["p12"], predictions["p25"], predictions["p50"],
+                   predictions["p75"], predictions["p88"], predictions["p94"]]),
         probs)
     plt.show()
 
@@ -241,11 +248,15 @@ if __name__ == '__main__':
     # Quiet the deprecation warnings in the command line a little.
     warnings.filterwarnings("ignore", category=np.VisibleDeprecationWarning)
     warnings.filterwarnings("ignore", category=FutureWarning)
+
+    # Modify print settings
+    pd.set_option('display.max_rows', 100)
+    pd.set_option('display.max_columns', 400)
     # loader.clean_and_save_data()
     # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
     pbp_data = loader.load_data([2018,2019,2020,2021])
-    version = 205
+    version = 206
     current_week = 11
     season = 2021
     n_projections = 250
@@ -268,7 +279,7 @@ if __name__ == '__main__':
     for season in range(2018, 2021):
         for week in range(8, 18):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 50).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 32).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
