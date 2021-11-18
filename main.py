@@ -4,6 +4,7 @@ import pandas as pd
 import random
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
+from sklearn.calibration import CalibrationDisplay
 import score
 import warnings
 import numpy as np
@@ -154,6 +155,21 @@ def plot_predictions(predictions):
         actual = predictions.loc[predictions.position == position]["score"]
         sub.scatter(predicted, actual)
         sub.set_title(position)
+
+    predictions["p10"] = predictions.quantile(.1, axis=1) > predictions["score"]
+    predictions["p25"] = predictions.quantile(.25, axis=1) > predictions["score"]
+    predictions["p50"] = predictions.quantile(.5, axis=1) > predictions["score"]
+    predictions["p75"] = predictions.quantile(.75, axis=1) > predictions["score"]
+    predictions["p90"] = predictions.quantile(.9, axis=1) > predictions["score"]
+
+    probs = [.1,] * predictions.shape[0] +\
+            [.25] * predictions.shape[0] +\
+            [.5] * predictions.shape[0] + \
+            [.75] * predictions.shape[0] + \
+            [.9] * predictions.shape[0]
+    disp = CalibrationDisplay.from_predictions(
+        pd.concat([predictions["p10"], predictions["p25"], predictions["p50"], predictions["p75"], predictions["p90"]]),
+        probs)
     plt.show()
 
 
@@ -229,10 +245,10 @@ if __name__ == '__main__':
     # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
     pbp_data = loader.load_data([2018,2019,2020,2021])
-    version = 204
+    version = 205
     current_week = 11
     season = 2021
-    n_projections = 500
+    n_projections = 250
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
@@ -250,9 +266,9 @@ if __name__ == '__main__':
     all_scores = []
     all_prediction_data = []
     for season in range(2018, 2021):
-        for week in range(8, 19):
+        for week in range(8, 18):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 100).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 50).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
@@ -260,12 +276,15 @@ if __name__ == '__main__':
                 calculate_fantasy_leaders(pbp_data, season, week), on="player_id", how="outer")
             roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
             prediction_data = prediction_data.merge(roster_data, on="player_id", how="left")
+            prediction_data["position"] = prediction_data["position"].fillna("DEF")
             prediction_data = prediction_data.assign(week=week)
             prediction_data = prediction_data.assign(season=season)
             all_prediction_data.append(prediction_data)
 
-    scores = score_predictions(pd.concat(all_prediction_data))
+    full_data = pd.concat(all_prediction_data)
+    scores = score_predictions(full_data)
     scores.to_csv("projection_test_scores_v%s.csv" % version)
+    full_data[["player_id", "player_name", "position", "team", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
 
 
