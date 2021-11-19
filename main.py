@@ -101,6 +101,8 @@ def project_week(data, models, season, week, n):
         # Playcall tendencies
         "offense_pass_oe_est", "defense_pass_oe_est"
     ]]
+    player_stats["relative_yac_est"].fillna(1, inplace=True)
+    player_stats["relative_air_yards_est"].fillna(1, inplace=True)
     for i, row in schedules.iterrows():
         gameday_time = datetime.datetime.fromordinal(parse(row.gameday).date().toordinal())
         print("Projecting %s at %s" % (row.away_team, row.home_team))
@@ -271,7 +273,6 @@ if __name__ == '__main__':
     n_projections = 256
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
-        'yac_model': receivers.build_or_load_yac_kde(),
         'rush_model': rushers.build_or_load_rush_kde(),
         'scramble_model': rushers.build_or_load_scramble_kde(),
         'completion_model': completion.build_or_load_completion_model(),
@@ -279,14 +280,15 @@ if __name__ == '__main__':
         'int_return_model': int_return.build_or_load_int_return_kde(),
     }
     models.update(receivers.build_or_load_all_air_yards_kdes())
+    models.update(receivers.build_or_load_all_yac_kdes())
 
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
     all_prediction_data = []
     for season in range(2021, 2022):
-        for week in range(8, 10):
+        for week in range(8, 18):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 10).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 48).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
@@ -302,10 +304,10 @@ if __name__ == '__main__':
     full_data = pd.concat(all_prediction_data)
     scores = score_predictions(full_data)
     scores.to_csv("projection_test_scores_v%s.csv" % version)
-    full_data[["player_id", "player_name", "position", "team", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
+    full_data[["player_id", "player_name", "position", "team","week", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
     # Generate projections for all remaining weeks and ROS metadata.
-    # project_ros(pbp_data, models, season, current_week, n_projections, version)
+    project_ros(pbp_data, models, season, current_week, n_projections, version)
 
 
 
