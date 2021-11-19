@@ -59,10 +59,17 @@ def build_player_id_map(data):
 
 # Projects the a given week's estimated fantasy points.
 def project_week(data, models, season, week, n):
-    # Load the relevant dataset, which is all weak before this.
-    single_season_data = data.loc[data.season == season].loc[data.week < week]
-    team_stats = teams.calculate(single_season_data, season)
-    player_stats = players.calculate(single_season_data, team_stats, season)
+    # Load the relevant dataset, which includes one week for look-behind calculation of
+    # talent estimators.
+
+    # EXPERIMENT: one season of lookbehind data.
+    # Get this and last season.
+    season_data = data.loc[data.season.isin([season, season - 1])]
+    # From the smaller dataset, it's either last season, or this season, in which case we want
+    # a more recent week.
+    season_data = season_data.loc[(season_data.season == season-1) | (data.week < week)]
+    team_stats = teams.calculate(season_data, season)
+    player_stats = players.calculate(season_data, team_stats, season)
     schedules = nfl_data_py.import_schedules([season])
     schedules = schedules.loc[schedules.week == week]
     # The models used to inform probabilities and choices.
@@ -187,10 +194,10 @@ def compute_stats_and_export(projection_data, season, week):
     percentile_75 = projection_data.quantile(.75, axis=1)
     percentile_88 = projection_data.quantile(.875, axis=1)
     projection_data = projection_data.assign(median=median)
-    projection_data = projection_data.assign(percentile_10=percentile_12)
+    projection_data = projection_data.assign(percentile_12=percentile_12)
     projection_data = projection_data.assign(percentile_25=percentile_25)
     projection_data = projection_data.assign(percentile_75=percentile_75)
-    projection_data = projection_data.assign(percentile_90=percentile_88)
+    projection_data = projection_data.assign(percentile_88=percentile_88)
     roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
     projection_data = projection_data.merge(roster_data, on="player_id", how="left")
     projection_data = projection_data.sort_values(by="median", ascending=False)[
@@ -255,11 +262,13 @@ if __name__ == '__main__':
     # loader.clean_and_save_data()
     # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
-    pbp_data = loader.load_data([2018,2019,2020,2021])
-    version = 206
+    pbp_data = loader.load_data([2017,2018,2019,2020,2021])
+    version = 300
     current_week = 11
     season = 2021
-    n_projections = 250
+    # If possible, lean into values divisible by 16, for calculating percentiles.
+    # 16, 32, 48, 96, 256, 512, 1024 are examples close to known round numbers
+    n_projections = 256
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'yac_model': receivers.build_or_load_yac_kde(),
@@ -274,10 +283,10 @@ if __name__ == '__main__':
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
     all_prediction_data = []
-    for season in range(2018, 2021):
-        for week in range(8, 18):
+    for season in range(2021, 2022):
+        for week in range(8, 10):
             print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(pbp_data, models, season, week, 64).reset_index()
+            prediction_data = project_week(pbp_data, models, season, week, 10).reset_index()
             prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
             prediction_data = prediction_data.rename(columns={"index": "player_id"})
 
@@ -296,7 +305,7 @@ if __name__ == '__main__':
     full_data[["player_id", "player_name", "position", "team", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
     # Generate projections for all remaining weeks and ROS metadata.
-    project_ros(pbp_data, models, season, current_week, n_projections, version)
+    # project_ros(pbp_data, models, season, current_week, n_projections, version)
 
 
 

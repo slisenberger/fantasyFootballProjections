@@ -161,6 +161,7 @@ def compute_big_carry_rate_estimator(data):
     # Only use rushes, avoid QB scrambles.
     data = data.loc[data["rush"] == 1]
     data.loc[data.rushing_yards >=10, "big_carry"] = 1
+    data["big_carry"].fillna(0, inplace=True)
     big_carry_prior = data.loc[data.big_carry == 1].shape[0] / data.shape[0]
     big_carry_span = 160
     biased = data.groupby(["rusher_player_id"])["big_carry"].apply(lambda d: prepend(d, big_carry_prior)).to_frame()
@@ -226,6 +227,7 @@ def compute_yac_estimator(data):
 
 def calculate_weekly(data, weekly_team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
+    data = data.loc[data.season == season]
     all_players = build_player_id_map(data)
     all_teams = build_player_team_map(data)
     weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
