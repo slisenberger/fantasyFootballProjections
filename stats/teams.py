@@ -5,6 +5,7 @@ from data import loader
 # Calculate team statistics that are used to determine tendencies.
 def calculate(data, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run']))]
+    data = data.loc[data.season == season]
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
@@ -160,6 +161,7 @@ def calculate(data, season):
     return team_stats
 
 def calculate_weekly(data, season):
+    data = data.loc[data.season == season]
     targets_weekly = data.groupby(
         ["posteam", "week"])["receiver_player_id"].count().sort_values().to_frame(name="targets_wk").reset_index()\
         .rename(columns={'posteam': 'team'})

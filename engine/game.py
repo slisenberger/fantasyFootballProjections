@@ -390,8 +390,12 @@ class GameState:
       return tgt
 
   def is_scramble(self, qb):
-      scramble_rate = qb["scramble_rate_est"].values[0]
-      return random.random() < scramble_rate
+      try:
+        scramble_rate = qb["scramble_rate_est"].values[0]
+        return random.random() < scramble_rate
+      # If the qb doesn't have a rate, default to false.
+      except IndexError:
+          return False
 
   def choose_carrier(self):
       pos_player_stats = self.get_pos_player_stats()
@@ -431,7 +435,7 @@ class GameState:
           # For WR and TE, apply a multiplier to increase their ADOT.
           base *= target["relative_air_yards_est"].values[0]
           # In red zone offense, stop applying team air yards multipliers.
-          if self.yard_line <= 20:
+          if self.yard_line >= 20:
               base *= defense_relative_air_yards
 
       # If the total is too high to be realistic for the back of the end zone, cap it at max end zone.
@@ -441,7 +445,7 @@ class GameState:
       return base
 
   def compute_yac(self, target):
-      yac = self.yac_model.sample(n_samples=1)[0]
+      yac = self.yac_model.sample(n_samples=1)[0][0]
       # Come up with a way to handle small sample high yac players
       targets = target["targets"].values[0]
       relative_yac_est = target["relative_yac_est"].values[0]
@@ -449,8 +453,7 @@ class GameState:
       if yac > 0:
         yac *= defense_relative_yac
         yac *= relative_yac_est
-
-      return yac[0]
+      return yac
 
 
 
