@@ -12,6 +12,36 @@ from stats.util import prepend
 
 def calculate(data, team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
+    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
+    receiver_roster_data = roster_data.rename(
+        columns={"position": "position_receiver", "player_id": "receiver_player_id"})[
+        ["position_receiver", "receiver_player_id"]]
+    receiver_data = data.loc[data.pass_attempt == 1].merge(receiver_roster_data, on="receiver_player_id", how="left")
+    rel_air_yards = {
+        "RB": receiver_data.loc[receiver_data.position_receiver == "RB"]["air_yards"].mean(),
+        "WR": receiver_data.loc[receiver_data.position_receiver == "WR"]["air_yards"].mean(),
+        "TE": receiver_data.loc[receiver_data.position_receiver == "TE"]["air_yards"].mean(),
+        "ALL": receiver_data["air_yards"].mean()
+    }
+    rel_yac = {
+        "RB": receiver_data.loc[receiver_data.position_receiver == "RB"]["yards_after_catch"].mean(),
+        "WR": receiver_data.loc[receiver_data.position_receiver == "WR"]["yards_after_catch"].mean(),
+        "TE": receiver_data.loc[receiver_data.position_receiver == "TE"]["yards_after_catch"].mean(),
+        "ALL": receiver_data["yards_after_catch"].mean()
+    }
+
+    def get_pos_rel_air_yards(pos):
+        if pos in rel_air_yards:
+            return rel_air_yards[pos]
+        else:
+            return rel_air_yards["ALL"]
+
+    def get_pos_rel_yac(pos):
+        if pos in rel_yac:
+            return rel_yac[pos]
+        else:
+            return rel_yac["ALL"]
+
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
@@ -38,12 +68,13 @@ def calculate(data, team_stats, season):
     receiver_air_yards_per_target = data.groupby("receiver_player_id")["air_yards"].mean() \
         .sort_values().to_frame(name='air_yards_per_target').reset_index() \
         .rename(columns={'receiver_player_id': 'player_id'})
-    air_yards_est = compute_air_yards_estimator(data)
+    air_yards_est = compute_air_yards_estimator(receiver_data)
     receiver_yac = data.groupby("receiver_player_id")["yards_after_catch"].mean().sort_values()\
         .to_frame(name='yac').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
-    yac_est = compute_yac_estimator(data)
+    yac_est = compute_yac_estimator(receiver_data)
     receiver_cpoe_est = compute_receiver_cpoe_estimator(data)
+    deep_target_rate_est = compute_deep_target_rate_estimator(data)
     rushing_carries = data.loc[data.rush == 1].groupby("rusher_player_id").size().sort_values()\
         .to_frame(name="carries").reset_index().rename(columns={'rusher_player_id': 'player_id'})
     yards_per_carry = data.loc[data.rush == 1].groupby("rusher_player_id")["rushing_yards"].mean()\
@@ -81,6 +112,7 @@ def calculate(data, team_stats, season):
         .merge(receiver_air_yards,how="outer", on="player_id") \
         .merge(receiver_air_yards_per_target, how="outer", on="player_id") \
         .merge(air_yards_est, how="outer", on="player_id") \
+        .merge(deep_target_rate_est, how="outer", on="player_id") \
         .merge(receiver_yac, how="outer", on="player_id") \
         .merge(yac_est, how="outer", on="player_id") \
         .merge(receiver_cpoe_est, how="outer", on="player_id") \
@@ -102,7 +134,6 @@ def calculate(data, team_stats, season):
 
 
     # Set metadata
-    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
     offense_stats = offense_stats.merge(roster_data, on="player_id", how="left")
     team_targets = team_stats[["team", "targets", "carries", "red_zone_targets", "red_zone_carries"]]
     offense_stats = offense_stats.merge(team_targets, how="outer", on="team", suffixes=[None,"_team"])
@@ -112,14 +143,21 @@ def calculate(data, team_stats, season):
     carries_est = weekly_carry_share_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(targets_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(carries_est, how="outer", on="player_id")
+    offense_stats["target_share_est"].fillna(0, inplace=True)
+    offense_stats["carry_share_est"].fillna(0, inplace=True)
     offense_stats['red_zone_target_percentage'] = offense_stats.apply(lambda row: row["red_zone_targets"] / row["red_zone_targets_team"], axis=1)
     offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
     offense_stats['relative_ypc'] = offense_stats["yards_per_carry"] / lg_avg_ypc
     offense_stats['relative_ypc_est'] = offense_stats["ypc_est"] / lg_avg_ypc
-    offense_stats['relative_yac'] = offense_stats["yac"] / lg_avg_yac
-    offense_stats['relative_yac_est'] = offense_stats["yac_est"] / lg_avg_yac
-    offense_stats['relative_air_yards'] = offense_stats["air_yards_per_target"] / lg_avg_air_yards
-    offense_stats['relative_air_yards_est'] = offense_stats["air_yards_est"] / lg_avg_air_yards
+    offense_stats['relative_yac'] = offense_stats.apply(
+        lambda row: row["yac"] / get_pos_rel_yac(row["position"]), axis=1)
+    offense_stats['relative_yac_est'] = offense_stats.apply(
+        lambda row: row["yac_est"] / get_pos_rel_yac(row["position"]), axis=1).fillna(1)
+
+    offense_stats['relative_air_yards'] = offense_stats.apply(
+        lambda row: row["air_yards_per_target"] / get_pos_rel_air_yards(row["position"]), axis=1)
+    offense_stats['relative_air_yards_est'] = offense_stats.apply(
+        lambda row: row["air_yards_est"] / get_pos_rel_air_yards(row["position"]), axis=1).fillna(1)
     offense_stats['relative_yards_per_scramble_est'] = offense_stats["yards_per_scramble_est"] / lg_avg_scramble_yards
 
     # Experimental modeling to use MLM. Will take some work to get right.
@@ -169,6 +207,16 @@ def compute_big_carry_rate_estimator(data):
     return big_carry_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(
         columns={'rusher_player_id': 'player_id', 'big_carry': 'big_carry_rate_est'})[["player_id", "big_carry_rate_est"]]
 
+def compute_deep_target_rate_estimator(data):
+    data.loc[data.air_yards >= 30, "deep_target"] = 1
+    data["deep_target"].fillna(0, inplace=True)
+    deep_target_prior = 0
+    deep_target_span = 500
+    biased = data.groupby(["receiver_player_id"])["deep_target"].apply(lambda d: prepend(d, deep_target_prior)).to_frame()
+    deep_target_est = biased.groupby(["receiver_player_id"])["deep_target"].apply(lambda x: x.ewm(span=deep_target_span, adjust=False).mean()).to_frame()
+    return deep_target_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(
+        columns={'receiver_player_id': 'player_id', 'deep_target': 'deep_target_rate_est'})[["player_id", "deep_target_rate_est"]]
+
 def compute_yards_per_scramble_estimator(data):
     data = data.loc[data["qb_scramble"] == 1]
     # Essentially, use the last 100 scramble window to judge talent.
@@ -189,10 +237,28 @@ def compute_receiver_cpoe_estimator(data):
     return cpoe_est_now
 
 def compute_air_yards_estimator(data):
-    air_yards_prior = data["air_yards"].mean()
+    air_yards_priors = {
+        "RB": data.loc[data.position_receiver == "RB"]["air_yards"].mean(),
+        "WR": data.loc[data.position_receiver == "WR"]["air_yards"].mean(),
+        "TE": data.loc[data.position_receiver == "TE"]["air_yards"].mean(),
+        "ALL": data["air_yards"].mean()
+    }
+
+    def get_prior(pos):
+        if pos in air_yards_priors:
+            return air_yards_priors[pos]
+        else:
+            return air_yards_priors["ALL"]
+
     # Essentially, use the last 200 target window to judge completion.
     air_yards_span = 200
-    biased_ay = data.groupby(["receiver_player_id"])["air_yards"].apply(lambda d: prepend(d, air_yards_prior)).to_frame()
+    all_biased_data = []
+    # For each position, get that position's data, break down by receiver ID, and apply a special prior
+    for pos in ["RB", "WR", "TE", "FB"]:
+      all_biased_data.append(
+          data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["air_yards"]
+              .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
+    biased_ay = pd.concat(all_biased_data)
     ay_est = biased_ay.groupby(["receiver_player_id"])["air_yards"].apply(lambda x: x.ewm(span=air_yards_span, adjust=False).mean()).to_frame()
     ay_est_now = ay_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'air_yards': 'air_yards_est'})[["player_id", "air_yards_est"]]
     return ay_est_now
@@ -216,9 +282,25 @@ def compute_big_carry_estimator(data):
     pass
 
 def compute_yac_estimator(data):
-    yac_prior = data["yards_after_catch"].mean()
+    yac_priors = {
+        "RB": data.loc[data.position_receiver == "RB"]["yards_after_catch"].mean(),
+        "WR": data.loc[data.position_receiver == "WR"]["yards_after_catch"].mean(),
+        "TE": data.loc[data.position_receiver == "TE"]["yards_after_catch"].mean(),
+        "ALL": data["yards_after_catch"].mean()
+    }
+    def get_prior(pos):
+        if pos in yac_priors:
+            return yac_priors[pos]
+        else:
+            return yac_priors["ALL"]
     yac_span = 140
-    biased_yac = data.groupby(["receiver_player_id"])["yards_after_catch"].apply(lambda d: prepend(d, yac_prior)).to_frame()
+    all_biased_data = []
+    # For each position, get that position's data, break down by receiver ID, and apply a special prior
+    for pos in ["RB", "WR", "TE", "FB"]:
+        all_biased_data.append(
+            data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["yards_after_catch"]
+                .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
+    biased_yac = pd.concat(all_biased_data)
     yac_est = biased_yac.groupby(["receiver_player_id"])["yards_after_catch"].apply(lambda x: x.ewm(span=yac_span, adjust=False).mean()).to_frame()
     yac_est_now = yac_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'yards_after_catch': 'yac_est'})[
         ["player_id", "yac_est"]
