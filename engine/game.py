@@ -28,17 +28,21 @@ class GameState:
       self.completion_model = models["completion_model"]
       self.field_goal_model = models["field_goal_model"]
       self.playcall_model = models["playcall_model"]
-      self.yac_model = models["yac_model"]
       self.air_yards_models = {
-          'RB': models["RB"],
-          'TE': models["TE"],
-          "WR": models["WR"],
-          "ALL": models["ALL"],
+          'RB': models["air_yards_RB"],
+          'TE': models["air_yards_TE"],
+          "WR": models["air_yards_WR"],
+          "ALL": models["air_yards_ALL"],
+      }
+      self.yac_models = {
+          'RB': models["yac_RB"],
+          'TE': models["yac_TE"],
+          "WR": models["yac_WR"],
+          "ALL": models["yac_ALL"],
       }
       self.rush_model = models["rush_model"]
       self.scramble_model = models["scramble_model"]
       self.int_return_model = models["int_return_model"]
-
 
       self.game_over = False
 
@@ -103,6 +107,7 @@ class GameState:
     playcall = self.choose_playcall()
     is_complete = False
     yards = 0
+    air_yards = 0
     td = False
     sack = False
     interception = False
@@ -164,7 +169,7 @@ class GameState:
     # TODO: Handle return yards. currenly assumes no return.
     if interception:
         # Advance the ball the point of the air yards.
-        self.yard_line -= yards
+        self.yard_line -= air_yards
         # Change possession and return
         self.change_possession()
         return_yards = self.int_return_model.sample(n_samples=1)[0][0]
@@ -178,6 +183,10 @@ class GameState:
             self.touchdown()
             self.fantasy_points[self.posteam] += 6
             td = True
+            # Have to do this here because elsewise the kickoff doesn't happen.
+            if self.extra_point():
+            # TODO: model this
+              self.fantasy_points[k_id] += 1
 
         else:
             self.first_down()
@@ -209,21 +218,32 @@ class GameState:
     # Count the fantasy points for this play.
     if playcall == "run":
         self.fantasy_points[carrier_id] += .1 * yards
+        carrier_name = carrier["player_name"].values[0]
+
         if td:
+            print("%s: rushing TD of %s yards, %s points" % (carrier_name, yards, .1*yards + 6))
             self.fantasy_points[carrier_id] += 6
             if self.extra_point():
             # TODO: model this
               self.fantasy_points[k_id] += 1
-    if playcall == "pass" and not sack and is_complete:
+    if (playcall == "pass") and (not sack) and (not scramble) and (is_complete):
         self.fantasy_points[qb_id] += .04 * yards
-        self.fantasy_points[target_id] += .1 * yards
-        self.fantasy_points[target_id] += .5
+        target_fpts = .5
+        target_fpts += .1 * yards
+        target_name = target["player_name"].values[0]
         if td:
+
             self.fantasy_points[qb_id] += 4
-            self.fantasy_points[target_id] += 6
+            target_fpts += 6
             if self.extra_point():
             # TODO: model this
               self.fantasy_points[k_id] += 1
+
+        self.fantasy_points[target_id] += target_fpts
+        if target_fpts > 5:
+            print("%s: made play of value %s: yards %s" % (target_name, target_fpts, yards))
+        if self.fantasy_points[target_id] >= 40:
+            print("target %s has eclipsed 40 fpts! %s" % (target_name, self.fantasy_points[target_id]))
 
     if scramble:
         self.fantasy_points[qb_id] += .1 * yards
@@ -239,7 +259,6 @@ class GameState:
 
     if sack:
         self.fantasy_points[self.defteam()] += 1
-
 
     self.advance_clock(playcall, sack, is_complete)
 
@@ -349,7 +368,10 @@ class GameState:
       self.yard_line = 75
       self.first_down()
 
-
+  def score_differential(self):
+      pos_score = self.home_score if self.posteam == self.home_team else self.away_score
+      def_score = self.home_score if self.posteam == self.away_team else self.away_score
+      return pos_score - def_score
 
   # Choose a play type for this snap
   def choose_playcall(self):
@@ -359,12 +381,14 @@ class GameState:
     model_input = [
         self.down,
         self.yds_to_go,
-        self.home_score - self.away_score,
+        self.score_differential(),
         self.sec_remaining,
         self.quarter,
         self.yard_line]
-
-    base_probs = self.playcall_model.predict_proba([model_input])[0]
+    try:
+        base_probs = self.playcall_model.predict_proba([model_input])[0]
+    except ValueError:
+        print("posteam: %s\ninput: %s" % (self.posteam, model_input))
     # Adjust probabilities for team trends
     defense_pass_oe = self.get_def_team_stats()["defense_pass_oe_est"].values[0] / 100.0
     offense_pass_oe = self.get_pos_team_stats()["offense_pass_oe_est"].values[0] / 100.0
@@ -377,17 +401,29 @@ class GameState:
     return playcall
 
   def choose_target(self):
+      max_tgt_share = .5
       pos_player_stats = self.get_pos_player_stats()
       eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][
           ["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est",
            "targets", "relative_yac", "relative_yac_est", "receiver_cpoe_est"]]
+      weights = eligible_targets["target_share_est"].tolist()
+      # Normalize weights to sum to 1, and then continue mixing
+      # in a uniform distribution until we are below our
+      # maximum target share.
+      weights = [weight / sum(weights) for weight in weights]
+
+      while max(weights) > max_tgt_share:
+          weights = [weight + .1 for weight in weights]
+          weights = [weight / sum(weights) for weight in weights]
       target = random.choices(
           eligible_targets["player_id"].tolist(),
-          weights=eligible_targets["target_share_est"].tolist(),
+          weights=weights,
           k=1)[0]
 
       tgt = eligible_targets.loc[eligible_targets["player_id"] == target]
       return tgt
+
+
 
   def is_scramble(self, qb):
       try:
@@ -445,9 +481,14 @@ class GameState:
       return base
 
   def compute_yac(self, target):
-      yac = self.yac_model.sample(n_samples=1)[0][0]
+      yac = 0
+      pos = target["position"].values[0]
+      # Use special position trained models at first, before adjusting.
+      if pos in ["WR", "RB", "TE"]:
+        yac = self.yac_models[pos].sample(n_samples=1)[0][0]
+      else:
+        yac = self.yac_models["ALL"].sample(n_samples=1)[0][0]
       # Come up with a way to handle small sample high yac players
-      targets = target["targets"].values[0]
       relative_yac_est = target["relative_yac_est"].values[0]
       defense_relative_yac = self.get_def_team_stats()["defense_relative_yac_est"].values[0]
       if yac > 0:
@@ -547,8 +588,8 @@ class GameState:
 
       # Adjust probabilities for team trends
       defense_cpoe = self.get_def_team_stats()["defense_cpoe_est"].values[0] / 100.0
-      base_probs[COMPLETE_INDEX] += defense_cpoe
-      base_probs[INCOMPLETE_INDEX] -= defense_cpoe
+      #base_probs[COMPLETE_INDEX] += defense_cpoe
+      #base_probs[INCOMPLETE_INDEX] -= defense_cpoe
 
       # Adjust the completion probability for the active quarterback.
       qb = self.choose_quarterback()
@@ -562,8 +603,17 @@ class GameState:
       target_cpoe = target["receiver_cpoe_est"].values[0] / 100.0
       # TODO: Find a less arbitrary way of assigning credit to qb and receiver
       offense_cpoe = .75 * qb_cpoe + .25 * target_cpoe
-      base_probs[COMPLETE_INDEX] += offense_cpoe
-      base_probs[INCOMPLETE_INDEX] -= offense_cpoe
+      offense_comp = base_probs[COMPLETE_INDEX] + offense_cpoe
+      defense_comp = base_probs[COMPLETE_INDEX] + defense_cpoe
+      odds_ratio_off = offense_comp / (1 - offense_comp)
+      odds_ratio_def = defense_comp / (1 - defense_comp)
+      odds_ratio_base = base_probs[COMPLETE_INDEX] / (1 - base_probs[COMPLETE_INDEX])
+      or_factor = (odds_ratio_off * odds_ratio_def / odds_ratio_base)
+      est_comp = or_factor / (1 + or_factor)
+      #base_probs[COMPLETE_INDEX] += offense_cpoe
+      #base_probs[INCOMPLETE_INDEX] -= offense_cpoe
+      base_probs[COMPLETE_INDEX] = est_comp
+      base_probs[INCOMPLETE_INDEX] = (1 - est_comp)
 
       complete = random.choices(self.completion_model.classes_, weights=base_probs, k=1)[0]
 
