@@ -12,12 +12,15 @@ air_yards_model_name = "models/trained_models/air_yards_kde"
 rb_air_yards_model_name = "models/trained_models/air_yards_kde_rb"
 wr_air_yards_model_name = "models/trained_models/air_yards_kde_wr"
 te_air_yards_model_name = "models/trained_models/air_yards_kde_te"
-
-def build_or_load_yac_kde():
+rb_yac_model_name = "models/trained_models/yards_after_catch_kde_rb"
+wr_yac_model_name = "models/trained_models/yards_after_catch_kde_wr"
+te_yac_model_name = "models/trained_models/yards_after_catch_kde_te"
+def build_or_load_yac_kde(data=None):
     try:
         return joblib.load(yac_model_name)
     except FileNotFoundError:
-        data = receiver_data()
+        if data is None:
+          data = receiver_data()
         all_yac = data["yards_after_catch"].dropna()
         model = fit_kde(all_yac)
         joblib.dump(model, yac_model_name)
@@ -25,10 +28,18 @@ def build_or_load_yac_kde():
 
 def build_or_load_all_air_yards_kdes():
     data = receiver_data()
-    return {'RB': build_or_load_rb_air_yards_kde(data),
-            'WR': build_or_load_wr_air_yards_kde(data),
-            'TE': build_or_load_te_air_yards_kde(data),
-            'ALL': build_or_load_air_yards_kde(data)}
+    return {'air_yards_RB': build_or_load_rb_air_yards_kde(data),
+            'air_yards_WR': build_or_load_wr_air_yards_kde(data),
+            'air_yards_TE': build_or_load_te_air_yards_kde(data),
+            'air_yards_ALL': build_or_load_air_yards_kde(data)}
+
+def build_or_load_all_yac_kdes():
+    data = receiver_data()
+    return {'yac_RB': build_or_load_rb_yac_kde(data),
+            'yac_WR': build_or_load_wr_yac_kde(data),
+            'yac_TE': build_or_load_te_yac_kde(data),
+            'yac_ALL': build_or_load_yac_kde(data)}
+
 
 def build_or_load_air_yards_kde(data=None):
     try:
@@ -68,6 +79,33 @@ def build_or_load_te_air_yards_kde(data):
         joblib.dump(model, te_air_yards_model_name)
         return model
 
+def build_or_load_rb_yac_kde(data):
+    try:
+        return joblib.load(rb_yac_model_name)
+    except FileNotFoundError:
+        all_yac = data.loc[data.position == "RB"]["yards_after_catch"].dropna()
+        model = fit_kde(all_yac)
+        joblib.dump(model, rb_yac_model_name)
+        return model
+
+def build_or_load_wr_yac_kde(data):
+    try:
+        return joblib.load(wr_yac_model_name)
+    except FileNotFoundError:
+        all_yac = data.loc[data.position == "WR"]["yards_after_catch"].dropna()
+        model = fit_kde(all_yac)
+        joblib.dump(model, wr_yac_model_name)
+        return model
+
+def build_or_load_te_yac_kde(data):
+    try:
+        return joblib.load(te_yac_model_name)
+    except FileNotFoundError:
+        all_yac = data.loc[data.position == "TE"]["yards_after_catch"].dropna()
+        model = fit_kde(all_yac)
+        joblib.dump(model, te_yac_model_name)
+        return model
+
 def receiver_data():
     YEARS = [2017, 2018, 2019, 2020, 2021]
     data = pd.DataFrame()
@@ -76,7 +114,8 @@ def receiver_data():
                              compression='gzip', low_memory=False)
 
         # Reduce the size of the datasets to make the join easier.
-        i_data = i_data.loc[~i_data.receiver_player_id.isnull()][["receiver_player_id", "air_yards"]]
+        i_data = i_data.loc[~i_data.receiver_player_id.isnull()][
+            ["receiver_player_id", "air_yards", "yards_after_catch"]]
         data = data.append(i_data, sort=True)
     data = data.rename(columns={'receiver_player_id': 'player_id'})
     roster_data = nfl_data_py.import_rosters(
