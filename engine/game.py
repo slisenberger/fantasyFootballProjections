@@ -240,10 +240,6 @@ class GameState:
               self.fantasy_points[k_id] += 1
 
         self.fantasy_points[target_id] += target_fpts
-        if target_fpts > 5:
-            print("%s: made play of value %s: yards %s" % (target_name, target_fpts, yards))
-        if self.fantasy_points[target_id] >= 40:
-            print("target %s has eclipsed 40 fpts! %s" % (target_name, self.fantasy_points[target_id]))
 
     if scramble:
         self.fantasy_points[qb_id] += .1 * yards
