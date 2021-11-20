@@ -122,9 +122,14 @@ class GameState:
             qb_id = qb["player_id"].values[0]
         except IndexError:
             qb_id = "QB_%s" % self.posteam
-        offense_sack_rate = self.get_pos_team_stats()["offense_sacks_per_dropback"].values[0]
+        # Average the offensive and defensive sack rates.
+        offense_sack_rate = self.get_pos_team_stats()["offense_sack_rate_est"].values[0]
+        defense_sack_rate = self.get_def_team_stats()["defense_sack_rate_est"].values[0]
+        lg_sack_rate = self.get_pos_team_stats()["lg_sack_rate"].values[0]
+        sack_rate = compute_odds_ratio(offense_sack_rate, defense_sack_rate, lg_sack_rate)
+
         defense_int_rate = self.get_def_team_stats()["defense_int_rate_est"].values[0]
-        if random.random() < offense_sack_rate:
+        if random.random() < sack_rate:
             sack = True
             yards = -7
 
@@ -221,7 +226,6 @@ class GameState:
         carrier_name = carrier["player_name"].values[0]
 
         if td:
-            print("%s: rushing TD of %s yards, %s points" % (carrier_name, yards, .1*yards + 6))
             self.fantasy_points[carrier_id] += 6
             if self.extra_point():
             # TODO: model this
@@ -256,7 +260,7 @@ class GameState:
     if sack:
         self.fantasy_points[self.defteam()] += 1
 
-    self.advance_clock(playcall, sack, is_complete)
+    self.advance_clock(playcall, sack, is_complete, scramble)
 
   def extra_point(self):
       # Arbitrary value chosen from google. In future, compute this from lg avg or model.
@@ -297,9 +301,9 @@ class GameState:
   # - Modeling timeouts and hurry-up situations
   # - Modeling spikes and kneels
   # - Modeling clock loss due to penalities
-  def advance_clock(self, playcall, sack, is_complete):
+  def advance_clock(self, playcall, sack, scramble, is_complete):
       original_sec_remaining = self.sec_remaining
-      if playcall == "pass" and not is_complete and not sack:
+      if playcall == "pass" and not is_complete and not sack and not scramble:
           self.sec_remaining -= 5
       elif playcall == "field_goal":
           self.sec_remaining -= 5
@@ -319,7 +323,7 @@ class GameState:
               else:
                   # Assume plays stop out of bounds regularly.
                   if self.sec_remaining < 5*60:
-                      clock_burn = 15
+                      clock_burn = 10
                   else:
                       clock_burn = 30
           else:
@@ -432,7 +436,7 @@ class GameState:
   def choose_carrier(self):
       pos_player_stats = self.get_pos_player_stats()
       eligible_carriers = pos_player_stats.loc[pos_player_stats["carry_percentage"] > 0][[
-          "player_id", "player_name", "carry_share_est", "big_carry_percentage",
+          "player_id", "player_name", "carry_share_est",
           "carries", "relative_ypc", "relative_ypc_est"]]
       carrier = random.choices(eligible_carriers["player_id"].tolist(), weights=eligible_carriers["carry_share_est"].tolist(), k=1)[0]
       return eligible_carriers.loc[eligible_carriers["player_id"] == carrier]
@@ -463,8 +467,8 @@ class GameState:
 
       defense_relative_air_yards = self.get_def_team_stats()["defense_relative_air_yards"].values[0]
       # For routes that are clearly in positive territory, apply multiplies.
-      if pos in ["WR", "TE"] and base >= 0:
-          # For WR and TE, apply a multiplier to increase their ADOT.
+      if base >= 0:
+          # Apply a multiplier to increase ADOT.
           base *= target["relative_air_yards_est"].values[0]
           # In red zone offense, stop applying team air yards multipliers.
           if self.yard_line >= 20:
@@ -601,13 +605,7 @@ class GameState:
       offense_cpoe = .75 * qb_cpoe + .25 * target_cpoe
       offense_comp = base_probs[COMPLETE_INDEX] + offense_cpoe
       defense_comp = base_probs[COMPLETE_INDEX] + defense_cpoe
-      odds_ratio_off = offense_comp / (1 - offense_comp)
-      odds_ratio_def = defense_comp / (1 - defense_comp)
-      odds_ratio_base = base_probs[COMPLETE_INDEX] / (1 - base_probs[COMPLETE_INDEX])
-      or_factor = (odds_ratio_off * odds_ratio_def / odds_ratio_base)
-      est_comp = or_factor / (1 + or_factor)
-      #base_probs[COMPLETE_INDEX] += offense_cpoe
-      #base_probs[INCOMPLETE_INDEX] -= offense_cpoe
+      est_comp = compute_odds_ratio(offense_comp, defense_comp, base_probs[COMPLETE_INDEX])
       base_probs[COMPLETE_INDEX] = est_comp
       base_probs[INCOMPLETE_INDEX] = (1 - est_comp)
 
@@ -620,4 +618,14 @@ class GameState:
           return self.home_team
       else:
           return self.away_team
+
+
+# Helper function for estimating the probability of an event, given two
+# team trends (p1 and p2) and the lg average.
+def compute_odds_ratio(p1, p2, lg):
+    odds_ratio_p1 = p1/ (1 - p1)
+    odds_ratio_p2 = p2 / (1 - p2)
+    odds_ratio_lg = lg / (1 - lg)
+    or_factor = (odds_ratio_p1 * odds_ratio_p2 / odds_ratio_lg)
+    return or_factor / (1 + or_factor)
 

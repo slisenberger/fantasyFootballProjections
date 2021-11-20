@@ -153,6 +153,7 @@ def calculate(data, season):
     team_stats['defense_relative_sack_rate'] = team_stats['defense_sacks_per_dropback'] / lvg_avg_sack_rate
     team_stats['offense_relative_sack_rate_est'] = team_stats['offense_sack_rate_est'] / lvg_avg_sack_rate
     team_stats['defense_relative_sack_rate_est'] = team_stats['defense_sack_rate_est'] / lvg_avg_sack_rate
+    team_stats['lg_sack_rate'] = lvg_avg_sack_rate
     if season <= 2019:
       team_stats['team'] = team_stats["team"].replace("LV", "OAK")
 

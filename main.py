@@ -64,7 +64,7 @@ def project_week(data, models, season, week, n):
 
     # EXPERIMENT: one season of lookbehind data.
     # Get this and last season.
-    season_data = data.loc[data.season.isin([season, season - 1])]
+    season_data = data.loc[(data.season == season) | (data.season == season - 1)]
     # From the smaller dataset, it's either last season, or this season, in which case we want
     # a more recent week.
     season_data = season_data.loc[(season_data.season == season-1) | (data.week < week)]
@@ -85,7 +85,7 @@ def project_week(data, models, season, week, n):
         "relative_air_yards_est", "target_share_est", "target_percentage", "targets", "relative_yac", "relative_yac_est",
         "receiver_cpoe_est",
         # Rushing data
-        "carry_share_est", "carry_percentage", "big_carry_percentage","carries", "relative_ypc", "relative_ypc_est",
+        "carry_share_est", "carry_percentage", "carries", "relative_ypc", "relative_ypc_est",
         # Passing data
         "cpoe_est", "pass_attempts", "scramble_rate_est", "yards_per_scramble_est",
         # Kicking data
@@ -97,7 +97,8 @@ def project_week(data, models, season, week, n):
         "defense_relative_ypc_est", "defense_relative_yac_est", "defense_relative_air_yards", "defense_cpoe_est",
         "defense_int_rate_est",
         # Offensive outcome adjustments
-        "offense_sacks_per_dropback",
+        "offense_sacks_per_dropback", "defense_sacks_per_dropback", "offense_sack_rate_est", "defense_sack_rate_est",
+        "lg_sack_rate",
         # Playcall tendencies
         "offense_pass_oe_est", "defense_pass_oe_est"
     ]]
@@ -142,7 +143,7 @@ def score_predictions(predictions):
     rmse_all = mean_squared_error(actual, predicted, squared=False)
     all_data = []
     all_data.append(pd.Series(dict(position="all", r2=r2_all, rmse=rmse_all)))
-    for position in ["QB", "TE", "WR", "RB", "K"]:
+    for position in ["QB", "TE", "WR", "RB", "K", "DEF"]:
         predicted = predictions.loc[predictions.position == position]["mean"].fillna(0)
         actual = predictions.loc[predictions.position == position]["score"].fillna(0)
         r2_pos = r2_score(actual, predicted)
@@ -156,7 +157,7 @@ def plot_predictions(predictions):
     predicted = predictions["mean"].fillna(0)
     fig, axs = plt.subplots(3, 2)
     axs.flat[0].scatter(predicted, actual, c='crimson')
-    positions = ["QB", "TE", "WR", "RB", "K"]
+    positions = ["QB", "TE", "WR", "RB", "DEF"]
     for i in range(1, 6):
         sub = axs.flat[i]
         position = positions[i-1]
@@ -216,6 +217,7 @@ def compute_stats_and_export(projection_data, season, week):
     projection_data.loc[projection_data.position.isin(["RB", "WR", "TE"])].to_csv(base_path + "flex.csv")
     projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
 
+
 def project_ros(pbp_data, models, season,  cur_week, n_projections, version):
     # Generate all remaining weeks projection data
     all_weeks = []
@@ -261,16 +263,16 @@ if __name__ == '__main__':
     # Modify print settings
     pd.set_option('display.max_rows', 100)
     pd.set_option('display.max_columns', 400)
-    # loader.clean_and_save_data()
+    #loader.clean_and_save_data([2016, 2017, 2018, 2019, 2020, 2021])
     # injuries.clean_and_save_data()
     # Get full datasets for pbp and injuries and rosters for future joining.
     pbp_data = loader.load_data([2017,2018,2019,2020,2021])
-    version = 300
+    version = 301
     current_week = 11
     season = 2021
     # If possible, lean into values divisible by 16, for calculating percentiles.
     # 16, 32, 48, 96, 256, 512, 1024 are examples close to known round numbers
-    n_projections = 256
+    n_projections = 32
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'rush_model': rushers.build_or_load_rush_kde(),
@@ -282,10 +284,13 @@ if __name__ == '__main__':
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
 
+    # Generate projections for all remaining weeks and ROS metadata.
+    project_ros(pbp_data, models, season, current_week, n_projections, version)
+
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
     all_prediction_data = []
-    for season in range(2021, 2022):
+    for season in range(2018, 2021):
         for week in range(8, 18):
             print("Running projections on %s Week %s" % (season, week))
             prediction_data = project_week(pbp_data, models, season, week, 48).reset_index()
@@ -296,7 +301,7 @@ if __name__ == '__main__':
                 calculate_fantasy_leaders(pbp_data, season, week), on="player_id", how="outer")
             roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
             prediction_data = prediction_data.merge(roster_data, on="player_id", how="left")
-            prediction_data["position"] = prediction_data["position"].fillna("DEF")
+            prediction_data.loc[lambda df: len(df.player_id) <= 3, "position"] = "DEF"
             prediction_data = prediction_data.assign(week=week)
             prediction_data = prediction_data.assign(season=season)
             all_prediction_data.append(prediction_data)
@@ -306,8 +311,8 @@ if __name__ == '__main__':
     scores.to_csv("projection_test_scores_v%s.csv" % version)
     full_data[["player_id", "player_name", "position", "team","week", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
-    # Generate projections for all remaining weeks and ROS metadata.
-    project_ros(pbp_data, models, season, current_week, n_projections, version)
+    scores_no_null = score_predictions(full_data.dropna())
+    scores_no_null.to_csv("projection_test_scores_no_null_v%s.csv" % version)
 
 
 
