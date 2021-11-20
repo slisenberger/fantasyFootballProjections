@@ -12,11 +12,11 @@ from stats.util import prepend
 
 def calculate(data, team_stats, season):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
-    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "player_name", "team"])
-    receiver_roster_data = roster_data.rename(
-        columns={"position": "position_receiver", "player_id": "receiver_player_id"})[
-        ["position_receiver", "receiver_player_id"]]
-    receiver_data = data.loc[data.pass_attempt == 1].merge(receiver_roster_data, on="receiver_player_id", how="left")
+    roster_data = nfl_data_py.import_rosters(
+        [season], columns=["player_id", "position", "player_name", "team"])
+
+
+    receiver_data = data.loc[data.pass_attempt == 1]
     rel_air_yards = {
         "RB": receiver_data.loc[receiver_data.position_receiver == "RB"]["air_yards"].mean(),
         "WR": receiver_data.loc[receiver_data.position_receiver == "WR"]["air_yards"].mean(),
@@ -43,6 +43,7 @@ def calculate(data, team_stats, season):
             return rel_yac["ALL"]
 
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
+    lg_avg_ypc_middle = data.loc[data.rush == 1 & data.run_gap.isin(["guard","tackle"])]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
     lg_avg_scramble_yards = data.loc[data.qb_scramble == 1]["rushing_yards"].mean()
@@ -81,6 +82,11 @@ def calculate(data, team_stats, season):
         .to_frame(name="yards_per_carry").reset_index()\
         .rename(columns={'rusher_player_id': 'player_id'})
     ypc_est = compute_ypc_estimator(data)
+    yards_per_carry_middle = data.loc[data.rush == 1 & data.run_gap.isin(["guard", "tackle"])].groupby(
+        "rusher_player_id")["rushing_yards"].mean() \
+        .to_frame(name="yards_per_carry_middle").reset_index() \
+        .rename(columns={'rusher_player_id': 'player_id'})
+    ypc_middle_est = compute_ypc_middle_estimator(data)
     red_zone_carries = data.loc[data.rush==1].loc[data.yardline_100 <= 10].groupby("rusher_player_id").size()\
         .sort_values().to_frame(name="red_zone_carries").reset_index()\
         .rename(columns={'rusher_player_id': 'player_id'})
@@ -119,6 +125,8 @@ def calculate(data, team_stats, season):
         .merge(rushing_carries, how="outer", on="player_id") \
         .merge(yards_per_carry, how="outer", on="player_id") \
         .merge(ypc_est, how="outer", on="player_id") \
+        .merge(yards_per_carry_middle, how="outer", on="player_id") \
+        .merge(ypc_middle_est, how="outer", on="player_id") \
         .merge(red_zone_carries, how="outer", on="player_id") \
         .merge(big_carries, how="outer", on="player_id")\
         .merge(big_carry_rate_est, how="outer", on="player_id") \
@@ -128,8 +136,6 @@ def calculate(data, team_stats, season):
         .merge(scramble_rate_estimator, how="outer", on="player_id") \
         .merge(yards_per_scramble_estimator, how="outer", on="player_id") \
         .merge(kick_attempts, how="outer", on="player_id")
-    offense_stats['big_carry_percentage'] = offense_stats["big_carries"] / offense_stats["carries"]
-    #offense_stats['relative_big_carry_percentage'] = offense_stats['big_carry_percentage'] / lg_big_carry_percentage
     offense_stats['checkdown_percentage'] = offense_stats["checkdown_targets"] / offense_stats["targets"]
 
 
@@ -149,6 +155,8 @@ def calculate(data, team_stats, season):
     offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
     offense_stats['relative_ypc'] = offense_stats["yards_per_carry"] / lg_avg_ypc
     offense_stats['relative_ypc_est'] = offense_stats["ypc_est"] / lg_avg_ypc
+    offense_stats['relative_ypc_middle'] = offense_stats["yards_per_carry_middle"] / lg_avg_ypc_middle
+    offense_stats['relative_ypc_middle_est'] = offense_stats["ypc_middle_est"] / lg_avg_ypc_middle
     offense_stats['relative_yac'] = offense_stats.apply(
         lambda row: row["yac"] / get_pos_rel_yac(row["position"]), axis=1)
     offense_stats['relative_yac_est'] = offense_stats.apply(
@@ -163,7 +171,9 @@ def calculate(data, team_stats, season):
     # Experimental modeling to use MLM. Will take some work to get right.
     # estimate_cpoe_attribution(data)
 
-
+    # Filter only to players that are playing this season.
+    all_player_ids = roster_data["player_id"].to_list()
+    offense_stats = offense_stats.loc[offense_stats.player_id.isin(all_player_ids)]
     offense_stats.to_csv('offense_stats.csv')
     return offense_stats
 
@@ -271,6 +281,17 @@ def compute_ypc_estimator(data):
     ypc_est = biased_ypc.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean()).to_frame()
     ypc_est_now = ypc_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(columns={'rusher_player_id': 'player_id', 'rushing_yards': 'ypc_est'})[[
         "player_id", "ypc_est"
+    ]]
+    return ypc_est_now
+
+def compute_ypc_middle_estimator(data):
+    data = data.loc[data.rush == 1 & data.run_gap.isin(["guard", "tackle"])]
+    ypc_prior = data["rushing_yards"].mean()
+    ypc_span = 160
+    biased_ypc = data.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda d: prepend(d, ypc_prior)).to_frame()
+    ypc_est = biased_ypc.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean()).to_frame()
+    ypc_est_now = ypc_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(columns={'rusher_player_id': 'player_id', 'rushing_yards': 'ypc_middle_est'})[[
+        "player_id", "ypc_middle_est"
     ]]
     return ypc_est_now
 
