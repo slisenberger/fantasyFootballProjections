@@ -444,15 +444,23 @@ class GameState:
   def choose_quarterback(self):
       pos_player_stats = self.get_pos_player_stats()
       eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == "QB"][
-          ["player_id", "player_name", "cpoe_est", "pass_attempts", "scramble_rate_est"]]
-      qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
+          ["player_id", "player_name", "cpoe_est", "pass_attempts", "scramble_rate_est", "starting_qb"]]
+      starting_qb = eligible_qbs.loc[eligible_qbs.starting_qb == 1]
+      if starting_qb.shape[0] == 1:
+          qb = starting_qb
+      else:
+          qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
       return qb
 
   def choose_kicker(self):
       pos_player_stats = self.get_pos_player_stats()
       eligible_ks = pos_player_stats.loc[pos_player_stats["position"] == "K"][
-          ["player_id", "player_name", "kick_attempts"]]
-      k = eligible_ks.sort_values(by="kick_attempts", ascending=False).head(1)
+          ["player_id", "player_name", "kick_attempts", "starting_k"]]
+      starting_k = eligible_ks.loc[eligible_ks.starting_k == 1]
+      if starting_k.shape[0] == 1:
+          k = starting_k
+      else:
+          k = eligible_ks.sort_values(by="kick_attempts", ascending=False).head(1)
       return k
 
   def compute_air_yards(self, target):

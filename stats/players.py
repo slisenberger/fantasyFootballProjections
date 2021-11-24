@@ -9,12 +9,24 @@ from data import loader
 # Calculate statistics about players
 from stats.util import prepend
 
+# Use previous 1000 passes to judge passers
+passer_span = 1000
+# Use previous 150 targets to judge receivers
+receiver_span = 150
+# Use previous 150 rushes to judge rushers
+rusher_span = 150
 
-def calculate(data, team_stats, season):
+
+def calculate(data, team_stats, season, week):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
     roster_data = nfl_data_py.import_rosters(
         [season], columns=["player_id", "position", "player_name", "team"])
-
+    depth_charts = nfl_data_py.import_depth_charts([season])
+    depth_charts = depth_charts.loc[depth_charts.week == week]
+    qb1s = depth_charts.loc[(depth_charts.depth_chart_position == "QB") & (depth_charts.depth_team == 1)].rename(
+        columns={"gsis_id": "player_id", "depth_team": "starting_qb"})[["player_id", "starting_qb"]]
+    k1s = depth_charts.loc[(depth_charts.depth_chart_position == "K") & (depth_charts.depth_team == 1)].rename(
+        columns={"gsis_id": "player_id", "depth_team": "starting_k"})[["player_id", "starting_k"]]
 
     receiver_data = data.loc[data.pass_attempt == 1]
     rel_air_yards = {
@@ -135,7 +147,9 @@ def calculate(data, team_stats, season):
         .merge(pass_attempts, how="outer", on="player_id")\
         .merge(scramble_rate_estimator, how="outer", on="player_id") \
         .merge(yards_per_scramble_estimator, how="outer", on="player_id") \
-        .merge(kick_attempts, how="outer", on="player_id")
+        .merge(kick_attempts, how="outer", on="player_id") \
+        .merge(qb1s, how="left", on="player_id") \
+        .merge(k1s, how="left", on="player_id")
     offense_stats['checkdown_percentage'] = offense_stats["checkdown_targets"] / offense_stats["targets"]
 
 
@@ -188,8 +202,7 @@ def estimate_cpoe_attribution(data):
 
 def compute_cpoe_estimator(data):
     cpoe_prior = 0
-    # Essentially, use the last 500 pass window to judge completion.
-    cpoe_span = 500
+    cpoe_span = passer_span
     biased_cpoe = data.groupby(["passer_player_id"])["cpoe"].apply(lambda d: prepend(d, cpoe_prior)).to_frame()
     cpoe_est = biased_cpoe.groupby(["passer_player_id"])["cpoe"].apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean()).to_frame()
     cpoe_est_now = cpoe_est.groupby(["passer_player_id"]).tail(1).reset_index().rename(columns={'passer_player_id': 'player_id', 'cpoe': 'cpoe_est'})[["player_id", "cpoe_est"]]
@@ -198,8 +211,7 @@ def compute_cpoe_estimator(data):
 def compute_scramble_rate_estimator(data):
     data = data.loc[data["pass"] == 1]
     scramble_prior = data.loc[data.qb_scramble == True].shape[0] / data.shape[0]
-    # Essentially, use the last 500 pass window to judge completion.
-    scramble_span = 500
+    scramble_span = passer_span
     biased_scramble = data.groupby(["passer_id"])["qb_scramble"].apply(lambda d: prepend(d, scramble_prior)).to_frame()
     scramble_est = biased_scramble.groupby(["passer_id"])["qb_scramble"].apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean()).to_frame()
     return scramble_est.groupby(["passer_id"]).tail(1).reset_index().rename(
@@ -211,7 +223,7 @@ def compute_big_carry_rate_estimator(data):
     data.loc[data.rushing_yards >=10, "big_carry"] = 1
     data["big_carry"].fillna(0, inplace=True)
     big_carry_prior = data.loc[data.big_carry == 1].shape[0] / data.shape[0]
-    big_carry_span = 160
+    big_carry_span = rusher_span
     biased = data.groupby(["rusher_player_id"])["big_carry"].apply(lambda d: prepend(d, big_carry_prior)).to_frame()
     big_carry_est = biased.groupby(["rusher_player_id"])["big_carry"].apply(lambda x: x.ewm(span=big_carry_span, adjust=False).mean()).to_frame()
     return big_carry_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(
@@ -221,7 +233,7 @@ def compute_deep_target_rate_estimator(data):
     data.loc[data.air_yards >= 30, "deep_target"] = 1
     data["deep_target"].fillna(0, inplace=True)
     deep_target_prior = 0
-    deep_target_span = 500
+    deep_target_span = receiver_span
     biased = data.groupby(["receiver_player_id"])["deep_target"].apply(lambda d: prepend(d, deep_target_prior)).to_frame()
     deep_target_est = biased.groupby(["receiver_player_id"])["deep_target"].apply(lambda x: x.ewm(span=deep_target_span, adjust=False).mean()).to_frame()
     return deep_target_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(
@@ -231,7 +243,7 @@ def compute_yards_per_scramble_estimator(data):
     data = data.loc[data["qb_scramble"] == 1]
     # Essentially, use the last 100 scramble window to judge talent.
     scramble_prior = data["rushing_yards"].mean()
-    scramble_span = 160
+    scramble_span = rusher_span
     biased_scramble = data.groupby(["passer_id"])["rushing_yards"].apply(lambda d: prepend(d, scramble_prior)).to_frame()
     scramble_est = biased_scramble.groupby(["passer_id"])["rushing_yards"].apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean()).to_frame()
     return scramble_est.groupby(["passer_id"]).tail(1).reset_index().rename(
@@ -239,8 +251,7 @@ def compute_yards_per_scramble_estimator(data):
 
 def compute_receiver_cpoe_estimator(data):
     cpoe_prior = 0
-    # Essentially, use the last 200 target window to judge completion.
-    cpoe_span = 200
+    cpoe_span = receiver_span
     biased_cpoe = data.groupby(["receiver_player_id"])["cpoe"].apply(lambda d: prepend(d, cpoe_prior)).to_frame()
     cpoe_est = biased_cpoe.groupby(["receiver_player_id"])["cpoe"].apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean()).to_frame()
     cpoe_est_now = cpoe_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'cpoe': 'receiver_cpoe_est'})[["player_id", "receiver_cpoe_est"]]
@@ -261,7 +272,7 @@ def compute_air_yards_estimator(data):
             return air_yards_priors["ALL"]
 
     # Essentially, use the last 200 target window to judge completion.
-    air_yards_span = 200
+    air_yards_span = receiver_span
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:
@@ -276,7 +287,7 @@ def compute_air_yards_estimator(data):
 def compute_ypc_estimator(data):
     data = data.loc[data.rush == 1]
     ypc_prior = data["rushing_yards"].mean()
-    ypc_span = 160
+    ypc_span = rusher_span
     biased_ypc = data.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda d: prepend(d, ypc_prior)).to_frame()
     ypc_est = biased_ypc.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean()).to_frame()
     ypc_est_now = ypc_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(columns={'rusher_player_id': 'player_id', 'rushing_yards': 'ypc_est'})[[
@@ -287,7 +298,7 @@ def compute_ypc_estimator(data):
 def compute_ypc_middle_estimator(data):
     data = data.loc[data.rush == 1 & data.run_gap.isin(["guard", "tackle"])]
     ypc_prior = data["rushing_yards"].mean()
-    ypc_span = 160
+    ypc_span = rusher_span
     biased_ypc = data.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda d: prepend(d, ypc_prior)).to_frame()
     ypc_est = biased_ypc.groupby(["rusher_player_id"])["rushing_yards"].apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean()).to_frame()
     ypc_est_now = ypc_est.groupby(["rusher_player_id"]).tail(1).reset_index().rename(columns={'rusher_player_id': 'player_id', 'rushing_yards': 'ypc_middle_est'})[[
@@ -314,7 +325,7 @@ def compute_yac_estimator(data):
             return yac_priors[pos]
         else:
             return yac_priors["ALL"]
-    yac_span = 140
+    yac_span = receiver_span
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:

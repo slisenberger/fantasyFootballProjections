@@ -1,5 +1,6 @@
 import pandas as pd
 import nfl_data_py
+from models import kicking
 
 # Load a year range of pbp data.
 def load_data(years):
@@ -45,6 +46,7 @@ def clean_and_save_data(years=[]):
              "lateral_recovery", "td_team", "td_player_id", "td_player_name", "no_score_prob", "opp_fg_prob",
              "opp_safety_prob", "opp_td_prob", "fg_prob", "safety_prob", "td_prob", "extra_point_prob",
              "two_point_conversion_prob"], axis=1)
+
         roster_data = nfl_data_py.import_rosters(
             [i], columns=["player_id", "position"])
         receiver_roster_data = roster_data.rename(
@@ -53,3 +55,4 @@ def clean_and_save_data(years=[]):
         data = data.merge(receiver_roster_data, on="receiver_player_id", how="left")
         # Output cleaned, compressed CSV to current directory
         data.to_csv('data/pbp_' + str(i) + '.csv.gz', index=False, compression='gzip')
+
