@@ -272,7 +272,7 @@ if __name__ == '__main__':
     season = 2021
     # If possible, lean into values divisible by 16, for calculating percentiles.
     # 16, 32, 48, 96, 256, 512, 1024 are examples close to known round numbers
-    n_projections = 256
+    n_projections = 32
     models = {
         'playcall_model': playcall.build_or_load_playcall_model(),
         'rush_model': rushers.build_or_load_rush_kde(),
@@ -284,6 +284,8 @@ if __name__ == '__main__':
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
 
+    # Generate projections for all remaining weeks and ROS metadata.
+    project_ros(pbp_data, models, season, current_week, n_projections, version)
     # Run backtesting against previous years to assess model predictive ability.
     all_scores = []
     all_prediction_data = []
@@ -308,8 +310,7 @@ if __name__ == '__main__':
     scores.to_csv("projection_test_scores_v%s.csv" % version)
     full_data[["player_id", "player_name", "position", "team","week", "mean", "score"]].to_csv("projection_raw_values_v%s.csv" % version)
 
-    # Generate projections for all remaining weeks and ROS metadata.
-    project_ros(pbp_data, models, season, current_week, n_projections, version)
+
 
 
 

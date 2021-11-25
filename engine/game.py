@@ -146,9 +146,6 @@ class GameState:
 
               air_yards = self.compute_air_yards(target)
 
-              if random.random() < defense_int_rate:
-                  interception = True
-
               is_complete = not interception and self.is_complete(air_yards, target)
 
               if is_complete:
