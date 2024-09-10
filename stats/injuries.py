@@ -39,31 +39,15 @@ def get_season_injury_data(season):
         print("Injury data not available before 2016")
         return None
 
-    all_weeks = []
-    id_map = nfl_data_py.import_ids(columns=["gsis_id", "mfl_id"], ids=["gsis", "mfl"])
-    for week in range(1, 18):
-        try:
-            full_url = INJURY_API_URL % (season, week)
-            response = requests.get(full_url)
-            data = json.loads(response.content.decode(response.encoding))
-            basic_injuries = pd.DataFrame(data["injuries"]["injury"])
-            basic_injuries['week'] = data["injuries"]["week"]
-            all_weeks.append(basic_injuries)
-        except KeyError:
-            break
-    df = pd.concat(all_weeks).rename(columns={'id': 'mfl_id'})
-    df["mfl_id"] = pd.to_numeric(df["mfl_id"])
-    df = df.merge(id_map, on="mfl_id")
-    df["exp_return"] = pd.to_datetime(df["exp_return"])
-    df = df.rename(columns={'gsis_id': 'player_id'})
-    df["week"] = pd.to_numeric(df["week"])
+    
+    df = nfl_data_py.import_injuries([season])
     return df
 
 
 def clean_and_save_data(years=[]):
     # Default to the most recent year.
     if not years:
-        years = [2021]
+        years = [2024]
     for year in years:
         inj_data = get_season_injury_data(year)
         inj_data.to_csv('data/inj_' + str(year) + '.csv.gz', index=False, compression='gzip')
@@ -80,7 +64,7 @@ def load_historical_data(years):
             cached_data[i] = i_data
 
 
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data, i_data], sort=True)
 
     data.reset_index(drop=True, inplace=True)
     return data

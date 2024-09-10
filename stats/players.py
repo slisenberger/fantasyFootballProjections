@@ -19,13 +19,13 @@ rusher_span = 150
 
 def calculate(data, team_stats, season, week):
     data = data.loc[(data.play_type.isin(['no_play', 'pass', 'run', 'field_goal']))]
-    roster_data = nfl_data_py.import_rosters(
+    roster_data = nfl_data_py.import_seasonal_rosters(
         [season], columns=["player_id", "position", "player_name", "team"])
     depth_charts = nfl_data_py.import_depth_charts([season])
     depth_charts = depth_charts.loc[depth_charts.week == week]
-    qb1s = depth_charts.loc[(depth_charts.depth_chart_position == "QB") & (depth_charts.depth_team == 1)].rename(
+    qb1s = depth_charts.loc[(depth_charts.position == "QB") & (depth_charts.depth_team == 1)].rename(
         columns={"gsis_id": "player_id", "depth_team": "starting_qb"})[["player_id", "starting_qb"]]
-    k1s = depth_charts.loc[(depth_charts.depth_chart_position == "K") & (depth_charts.depth_team == 1)].rename(
+    k1s = depth_charts.loc[(depth_charts.position == "K") & (depth_charts.depth_team == 1)].rename(
         columns={"gsis_id": "player_id", "depth_team": "starting_k"})[["player_id", "starting_k"]]
 
     receiver_data = data.loc[data.pass_attempt == 1]
@@ -63,17 +63,17 @@ def calculate(data, team_stats, season, week):
     weekly_team_stats = teams.calculate_weekly(data, season)
     weekly_player_stats = calculate_weekly(data, weekly_team_stats, season)
 
-    receiver_targets = data.groupby("receiver_player_id")\
-        .size().sort_values().to_frame(name='targets').reset_index()\
+    receiver_targets = data.groupby("receiver_player_id")["receiver_player_id"].count()\
+        .to_frame(name='targets').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_deep_targets = data.loc[data.air_yards >= 30].groupby("receiver_player_id")\
-        .size().sort_values().to_frame(name='deep_targets').reset_index()\
+    receiver_deep_targets = data.loc[data.air_yards >= 30].groupby("receiver_player_id")["receiver_player_id"].count()\
+        .to_frame(name='deep_targets').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby("receiver_player_id").size()\
-        .sort_values().to_frame(name='red_zone_targets').reset_index()\
+    receiver_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby("receiver_player_id")["receiver_player_id"].count()\
+        .to_frame(name='red_zone_targets').reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
-    receiver_checkdown_targets = data.loc[data.air_yards < 0].groupby("receiver_player_id").size()\
-        .sort_values().to_frame(name="checkdown_targets").reset_index()\
+    receiver_checkdown_targets = data.loc[data.air_yards < 0].groupby("receiver_player_id")["receiver_player_id"].count()\
+        .to_frame(name="checkdown_targets").reset_index()\
         .rename(columns={'receiver_player_id': 'player_id'})
     receiver_air_yards = data.groupby("receiver_player_id")["air_yards"].sum()\
         .sort_values().to_frame(name='air_yards').reset_index()\
@@ -88,7 +88,7 @@ def calculate(data, team_stats, season, week):
     yac_est = compute_yac_estimator(receiver_data)
     receiver_cpoe_est = compute_receiver_cpoe_estimator(data)
     deep_target_rate_est = compute_deep_target_rate_estimator(data)
-    rushing_carries = data.loc[data.rush == 1].groupby("rusher_player_id").size().sort_values()\
+    rushing_carries = data.loc[data.rush == 1].groupby("rusher_player_id")["rusher_player_id"].count()\
         .to_frame(name="carries").reset_index().rename(columns={'rusher_player_id': 'player_id'})
     yards_per_carry = data.loc[data.rush == 1].groupby("rusher_player_id")["rushing_yards"].mean()\
         .to_frame(name="yards_per_carry").reset_index()\
@@ -99,10 +99,10 @@ def calculate(data, team_stats, season, week):
         .to_frame(name="yards_per_carry_middle").reset_index() \
         .rename(columns={'rusher_player_id': 'player_id'})
     ypc_middle_est = compute_ypc_middle_estimator(data)
-    red_zone_carries = data.loc[data.rush==1].loc[data.yardline_100 <= 10].groupby("rusher_player_id").size()\
+    red_zone_carries = data.loc[data.rush==1].loc[data.yardline_100 <= 10].groupby("rusher_player_id")["rusher_player_id"].count()\
         .sort_values().to_frame(name="red_zone_carries").reset_index()\
         .rename(columns={'rusher_player_id': 'player_id'})
-    big_carries = data.loc[data.rush == 1].loc[data.rushing_yards >= 10].groupby("rusher_player_id").size() \
+    big_carries = data.loc[data.rush == 1].loc[data.rushing_yards >= 10].groupby("rusher_player_id")["rusher_player_id"].count() \
         .sort_values().to_frame(name="big_carries").reset_index() \
         .rename(columns={'rusher_player_id': 'player_id'})
     big_carry_rate_est = compute_big_carry_rate_estimator(data)
@@ -165,8 +165,15 @@ def calculate(data, team_stats, season, week):
     offense_stats = offense_stats.merge(carries_est, how="outer", on="player_id")
     offense_stats["target_share_est"].fillna(0, inplace=True)
     offense_stats["carry_share_est"].fillna(0, inplace=True)
-    offense_stats['red_zone_target_percentage'] = offense_stats.apply(lambda row: row["red_zone_targets"] / row["red_zone_targets_team"], axis=1)
-    offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
+    rz_targets_est = weekly_redzone_target_share_estimator(weekly_player_stats)
+    rz_carries_est = weekly_redzone_carry_share_estimator(weekly_player_stats)
+    offense_stats = offense_stats.merge(rz_targets_est, how="outer", on="player_id")
+    offense_stats = offense_stats.merge(rz_carries_est, how="outer", on="player_id")
+    offense_stats["redzone_target_share_est"].fillna(0, inplace=True)
+    offense_stats["redzone_carry_share_est"].fillna(0, inplace=True)
+
+    offense_stats['red_zone_target_percentage'] = offense_stats.apply(lambda row: 0 if row["red_zone_targets_team"] == 0 else row["red_zone_targets"] / row["red_zone_targets_team"], axis=1)
+    offense_stats['red_zone_carry_percentage'] = offense_stats.apply(lambda row: 0 if row["red_zone_carries_team"] == 0 else row["red_zone_carries"] / row["red_zone_carries_team"], axis=1)
     offense_stats['relative_ypc'] = offense_stats["yards_per_carry"] / lg_avg_ypc
     offense_stats['relative_ypc_est'] = offense_stats["ypc_est"] / lg_avg_ypc
     offense_stats['relative_ypc_middle'] = offense_stats["yards_per_carry_middle"] / lg_avg_ypc_middle
@@ -276,10 +283,9 @@ def compute_air_yards_estimator(data):
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:
-      all_biased_data.append(
-          data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["air_yards"]
-              .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
-    biased_ay = pd.concat(all_biased_data)
+      all_biased_data = pd.concat([all_biased_data,
+                                   data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["air_yards"]
+              .apply(lambda d: prepend(d, get_prior(pos))).to_frame()])
     ay_est = biased_ay.groupby(["receiver_player_id"])["air_yards"].apply(lambda x: x.ewm(span=air_yards_span, adjust=False).mean()).to_frame()
     ay_est_now = ay_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'air_yards': 'air_yards_est'})[["player_id", "air_yards_est"]]
     return ay_est_now
@@ -329,9 +335,10 @@ def compute_yac_estimator(data):
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:
-        all_biased_data.append(
-            data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["yards_after_catch"]
-                .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
+        all_biased_data = pd.concat(
+            [all_biased_data,
+             data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["yards_after_catch"]
+             .apply(lambda d: prepend(d, get_prior(pos))).to_frame()])
     biased_yac = pd.concat(all_biased_data)
     yac_est = biased_yac.groupby(["receiver_player_id"])["yards_after_catch"].apply(lambda x: x.ewm(span=yac_span, adjust=False).mean()).to_frame()
     yac_est_now = yac_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'yards_after_catch': 'yac_est'})[
@@ -347,11 +354,11 @@ def calculate_weekly(data, weekly_team_stats, season):
     weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
     weekly_rusher_data = data.loc[data.rush == 1].groupby(["rusher_player_id", "week"])
     weekly_targets = weekly_receiver_data.size().sort_values().to_frame(name='targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
-    weekly_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='red_zone_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
+    weekly_red_zone_targets = data.loc[data.yardline_100 <= 10].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='redzone_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_deep_targets = data.loc[data.air_yards >= 30].groupby(["receiver_player_id", "week"]).size().sort_values().to_frame(name='deep_targets_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_air_yards_target = weekly_receiver_data["air_yards"].mean().sort_values().to_frame(name='air_yards_per_target_wk').reset_index().rename(columns={'receiver_player_id': 'player_id'})
     weekly_carries = weekly_rusher_data.size().sort_values().to_frame(name="carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
-    weekly_red_zone_carries = data.loc[data.rush == 1].loc[data.yardline_100 <= 10].groupby(["rusher_player_id", "week"]).size().sort_values().to_frame(name="red_zone_carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
+    weekly_red_zone_carries = data.loc[data.rush == 1].loc[data.yardline_100 <= 10].groupby(["rusher_player_id", "week"]).size().sort_values().to_frame(name="redzone_carries_wk").reset_index().rename(columns={'rusher_player_id': 'player_id'})
     weekly_yards_per_carry = weekly_rusher_data["rushing_yards"].mean().sort_values().to_frame(name='yards_per_carry_wk').reset_index().rename(columns={'rusher_player_id':'player_id'})
 
     weekly_stats = weekly_targets\
@@ -364,43 +371,56 @@ def calculate_weekly(data, weekly_team_stats, season):
         .merge(get_weekly_injuries(season), how="outer", on=["player_id", "week"])
 
     weekly_stats["available"] = weekly_stats["available"].fillna(True)
-    roster_data = nfl_data_py.import_rosters([season], columns=["player_id", "position", "team"])
+    roster_data = nfl_data_py.import_seasonal_rosters([season], columns=["player_id", "position", "team"])
     weekly_stats = weekly_stats.merge(roster_data, on="player_id", how="left")
-    weekly_team_targets = weekly_team_stats[["team", "week", "targets_wk", "carries_wk"]]
+    weekly_team_targets = weekly_team_stats[["team", "week", "targets_wk", "carries_wk", "redzone_targets_wk",
+                                             "redzone_carries_wk"]]
     weekly_stats = weekly_stats.merge(weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"])
 
     weekly_stats['target_percentage_wk'] = weekly_stats.apply(lambda row: compute_target_percentage(row), axis=1)
     weekly_stats['carry_percentage_wk'] = weekly_stats.apply(lambda row: compute_carry_percentage(row), axis=1)
+    weekly_stats['redzone_target_percentage_wk'] = weekly_stats.apply(lambda row: compute_target_percentage(row, True), axis=1)
+    weekly_stats['redzone_carry_percentage_wk'] = weekly_stats.apply(lambda row: compute_carry_percentage(row, True), axis=1)
     weekly_stats['player_name'] = weekly_stats.apply(lambda row: all_players[row['player_id']], axis=1)
+
 
     weekly_stats.to_csv("weekly_stats.csv")
     return weekly_stats
 
-def compute_target_percentage(row):
+def compute_target_percentage(row, redzone=False):
+    player_metric = "redzone_targets_wk" if redzone else "targets_wk"
+    team_metric = "redzone_targets_wk_team" if redzone else "targets_wk_team"
     if row["available"]:
-        return row["targets_wk"] / row["targets_wk_team"]
+        if row[team_metric] == 0:
+            return 0
+        return row[player_metric] / row[team_metric]
     else:
         return np.nan
 
-def compute_carry_percentage(row):
+def compute_carry_percentage(row, redzone=False):
+    player_metric = "redzone_carries_wk" if redzone else "carries_wk"
+    team_metric = "redzone_carries_wk_team" if redzone else "carries_wk_team"
     if row["available"]:
-        return row["carries_wk"] / row["carries_wk_team"]
+        if row[team_metric] == 0:
+            return 0
+        return row[player_metric] / row[team_metric]
     else:
         return np.nan
 
 
 def get_weekly_injuries(season):
-    injured = ["IR", "IR-R", "IR-PUP", "IR-NFI", "Suspended", "COVID-IR", "Out"]
-    all_injuries = injuries.load_historical_data([season])
-    all_injuries = all_injuries.loc[all_injuries["status"].isin(injured)]
-    all_injuries = all_injuries.assign(available=False)
+    not_injured = ["Questionable"]
+    all_injuries = injuries.load_historical_data([season]).dropna()
+    all_injuries = all_injuries.loc[~all_injuries["report_status"].isin(not_injured)]
+    all_injuries = all_injuries.assign(available=False).rename(columns={'gsis_id': 'player_id'})
     return all_injuries[["week", "player_id", "available"]]
 
 
 def weekly_target_share_estimator(weekly_data):
+    # assume shared 1/8th
     target_prior = 0
-    # One season's worth of games. This may want to be larger (to incorporate past seasons of targets).
-    target_span = 17
+    # Temporarily shorten span for early season.
+    target_span = 17 
     biased_targets = weekly_data.groupby(["player_id"])["target_percentage_wk"].apply(
         lambda d: prepend(d, target_prior)).to_frame()
     targets_est = biased_targets.groupby(["player_id"])["target_percentage_wk"].apply(
@@ -411,9 +431,28 @@ def weekly_target_share_estimator(weekly_data):
     ]
     return targets_est_now
 
+def weekly_redzone_target_share_estimator(weekly_data):
+    # assume shared 1/8th
+    target_prior = 0
+    # Temporarily shorten span for early season.
+    target_span = 17 
+    biased_targets = weekly_data.groupby(["player_id"])["redzone_target_percentage_wk"].apply(
+        lambda d: prepend(d, target_prior)).to_frame()
+    targets_est = biased_targets.groupby(["player_id"])["redzone_target_percentage_wk"].apply(
+        lambda x: x.ewm(span=target_span, adjust=True, ignore_na=True).mean()).to_frame()
+    targets_est_now = targets_est.groupby(["player_id"]).tail(1).reset_index().rename(
+        columns={'redzone_target_percentage_wk': 'redzone_target_share_est'})[
+        ["player_id", "redzone_target_share_est"]
+    ]
+    return targets_est_now
+
+
+
 def weekly_carry_share_estimator(weekly_data):
+    # Assume rookies part of a committee of 4 backs
     carry_prior = 0
-    carry_span = 17
+    # Temporarily shorten span for early season.
+    carry_span = 17 
     biased_carries = weekly_data.groupby(["player_id"])["carry_percentage_wk"].apply(
         lambda d: prepend(d, carry_prior)).to_frame()
     carries_est = biased_carries.groupby(["player_id"])["carry_percentage_wk"].apply(
@@ -421,6 +460,21 @@ def weekly_carry_share_estimator(weekly_data):
     carries_est_now = carries_est.groupby(["player_id"]).tail(1).reset_index().rename(
         columns={'carry_percentage_wk': 'carry_share_est'})[
         ["player_id", "carry_share_est"]
+    ]
+    return carries_est_now
+
+def weekly_redzone_carry_share_estimator(weekly_data):
+    # Assume part of a committee of 4 backs
+    carry_prior = 0
+    # Temporarily shorten span for early season.
+    carry_span = 17
+    biased_carries = weekly_data.groupby(["player_id"])["redzone_carry_percentage_wk"].apply(
+        lambda d: prepend(d, carry_prior)).to_frame()
+    carries_est = biased_carries.groupby(["player_id"])["redzone_carry_percentage_wk"].apply(
+        lambda x: x.ewm(span=carry_span, adjust=True, ignore_na=True).mean()).to_frame()
+    carries_est_now = carries_est.groupby(["player_id"]).tail(1).reset_index().rename(
+        columns={'redzone_carry_percentage_wk': 'redzone_carry_share_est'})[
+        ["player_id", "redzone_carry_share_est"]
     ]
     return carries_est_now
 
