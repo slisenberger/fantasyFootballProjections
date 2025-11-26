@@ -1,30 +1,34 @@
-import nfl_data_py
+import argparse
+import warnings
+import os
+import datetime
+from collections import defaultdict
+
 import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.calibration import CalibrationDisplay
 from joblib import Parallel, delayed
-from evaluation import calibration
-import score
-import warnings
-import os
 from dateutil.parser import parse
-import datetime
+
+import nfl_data_py
+import score
 from engine import game
 from stats import players, teams, injuries
 from data import loader
 from models import int_return, kicking, completion, playcall, receivers, rushers
-from collections import defaultdict
+from evaluation import calibration
+from settings import AppConfig
 
 
 # Calculates the fantasy leaders on a given dataframe.
-def calculate_fantasy_leaders(pbp_data, season, week):
+def calculate_fantasy_leaders(pbp_data, season, week, config):
     data = pbp_data.loc[pbp_data.week == week]
     data = data.loc[data.season == season]
     data = data.loc[~(data.play_type.isin(["no_play"]))]
     scores = defaultdict(float)
     for i in range(data.shape[0]):
-        play_score = score.score_from_play(data.iloc[i])
+        play_score = score.score_from_play(data.iloc[i], config.scoring)
         if play_score is not None:
             for key in play_score.keys():
                 scores[key] += play_score[key]
@@ -35,8 +39,8 @@ def calculate_fantasy_leaders(pbp_data, season, week):
     ]
     for i in range(games.shape[0]):
         row = games.iloc[i]
-        scores[row.home_team] += score.points_from_score(row.total_away_score)
-        scores[row.away_team] += score.points_from_score(row.total_home_score)
+        scores[row.home_team] += score.points_from_score(row.total_away_score, config.scoring)
+        scores[row.away_team] += score.points_from_score(row.total_home_score, config.scoring)
 
     base_data = scores.items()
     all_scores = pd.DataFrame(base_data, columns=["player_id", "score"])
@@ -60,7 +64,9 @@ def build_player_id_map(data):
 
 
 # Projects the a given week's estimated fantasy points.
-def project_week(data, models, season, week, n):
+def project_week(data, models, season, week, config):
+    n = config.runtime.n_simulations
+    
     # Load the relevant dataset, which includes one week for look-behind calculation of
     # talent estimators.
 
@@ -161,12 +167,20 @@ def project_week(data, models, season, week, n):
         # Next, get rid of the players with a status that isn't questionable anyway, since the return
 
         game_stats.loc[game_stats.status == "Questionable"]
-        projections = Parallel(n_jobs=-1)(
-            delayed(project_game)(
-                models, game_stats, team_stats, row.home_team, row.away_team, week
+        
+        # Check parallel config
+        if config.runtime.use_parallel:
+            projections = Parallel(n_jobs=-1)(
+                delayed(project_game)(
+                    models, game_stats, team_stats, row.home_team, row.away_team, week, config
+                )
+                for i in range(n)
             )
-            for i in range(n)
-        )
+        else:
+            projections = [
+                project_game(models, game_stats, team_stats, row.home_team, row.away_team, week, config)
+                for i in range(n)
+            ]
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
@@ -175,7 +189,7 @@ def project_week(data, models, season, week, n):
     return proj_df
 
 
-def project_game(models, player_stats, team_stats, home, away, week):
+def project_game(models, player_stats, team_stats, home, away, week, config):
     # Here's all data about the players:
     home_player_stats = player_stats[player_stats["team"].isin([home])]
     away_player_stats = player_stats[player_stats["team"].isin([away])]
@@ -189,9 +203,9 @@ def project_game(models, player_stats, team_stats, home, away, week):
         away_player_stats,
         home_team_stats,
         away_team_stats,
+        rules=config.scoring
     )
     return game_machine.play_game()
-
 
 def score_predictions(predictions):
     plot_predictions(predictions)
@@ -209,7 +223,6 @@ def score_predictions(predictions):
         all_data.append(pd.Series(dict(position=position, r2=r2_pos, rmse=rmse_pos)))
 
     return pd.concat(all_data)
-
 
 def plot_predictions(predictions):
     actual = predictions["score"].fillna(0)
@@ -260,7 +273,6 @@ def plot_predictions(predictions):
     )
     plt.show()
 
-
 def compute_stats_and_export(projection_data, season, week, version):
     median = projection_data.median(axis=1)
     percentile_12 = projection_data.quantile(0.125, axis=1)
@@ -302,14 +314,18 @@ def compute_stats_and_export(projection_data, season, week, version):
     )
     projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
 
-
-def project_ros(pbp_data, models, season, cur_week, n_projections, version):
+def project_ros(pbp_data, models, config):
     # Generate all remaining weeks projection data
     all_weeks = []
+    
+    season = config.runtime.season
+    cur_week = config.runtime.week
+    version = config.runtime.version
+    
     for week in range(cur_week, cur_week + 1):
         print("Running projections on %s Week %s" % (season, week))
         projection_data = project_week(
-            pbp_data, models, 2024, week, n_projections
+            pbp_data, models, season, week, config
         ).reset_index()
         mean = projection_data.mean(axis=1)
         percentile_90 = projection_data.quantile(0.9, axis=1)
@@ -320,7 +336,7 @@ def project_ros(pbp_data, models, season, cur_week, n_projections, version):
             0
         )
         all_weeks.append(projection_data)
-        compute_stats_and_export(projection_data, 2024, week, version)
+        compute_stats_and_export(projection_data, season, week, version)
 
     all_ros = pd.concat(all_weeks)
     roster_data = nfl_data_py.import_seasonal_rosters(
@@ -361,10 +377,7 @@ def project_ros(pbp_data, models, season, cur_week, n_projections, version):
         ["player_id", "player_name", "team", "position", "playoffs_mean"]
     ].to_csv(base_path + "playoffs_mean.csv")
 
-
-import argparse
-
-def do_projections(pbp_data, ros_season, current_week, n_projections, version):
+def do_projections(pbp_data, config):
     models = {
         "playcall_model": playcall.build_or_load_playcall_model(),
         "rush_model": rushers.build_or_load_rush_kde(),
@@ -377,8 +390,8 @@ def do_projections(pbp_data, ros_season, current_week, n_projections, version):
     models.update(receivers.build_or_load_all_yac_kdes())
 
     # 1. Future Projections
-    print(f"--- Generating Projections for Season {ros_season} Week {current_week}+ ---")
-    project_ros(pbp_data, models, ros_season, current_week, n_projections, version)
+    print(f"--- Generating Projections for Season {config.runtime.season} Week {config.runtime.week}+ ---")
+    project_ros(pbp_data, models, config)
 
     # 2. Backtesting & Calibration
     print("\n--- Starting Backtesting & Calibration ---")
@@ -389,31 +402,36 @@ def do_projections(pbp_data, ros_season, current_week, n_projections, version):
     backtest_config = [(2018, 8)] 
 
     for season, week in backtest_config:
-        print(f"Backtesting {season} Week {week}...")
-        
-        # A. Run Simulations -> Get Raw Distribution
-        # project_week returns DataFrame with index=player_id, columns=0..N (scores)
-        # Note: project_week uses Parallel internally now.
-        sims_df = project_week(pbp_data, models, season, week, n_projections)
-        
-        # B. Get Actual Outcomes
-        # Returns DataFrame with columns ['player_id', 'score']
-        actuals_df = calculate_fantasy_leaders(pbp_data, season, week)
-        
-        # C. Merge
-        # We convert the wide simulation columns into a single list column
-        sims_df['simulations'] = sims_df.values.tolist()
-        
-        # Merge on index (sims_df player_id) vs column (actuals_df player_id)
-        # We reset_index on sims_df to make it cleaner
-        sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
-        
-        merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
-        merged['season'] = season
-        merged['week'] = week
-        merged = merged.rename(columns={'score': 'actual'})
-        
-        calibration_results.append(merged)
+        try:
+            print(f"Backtesting {season} Week {week}...")
+            
+            # A. Run Simulations -> Get Raw Distribution
+            # project_week returns DataFrame with index=player_id, columns=0..N (scores)
+            # Note: project_week uses Parallel internally now.
+            sims_df = project_week(pbp_data, models, season, week, config)
+            
+            # B. Get Actual Outcomes
+            # Returns DataFrame with columns ['player_id', 'score']
+            actuals_df = calculate_fantasy_leaders(pbp_data, season, week, config)
+            
+            # C. Merge
+            # We convert the wide simulation columns into a single list column
+            sims_df['simulations'] = sims_df.values.tolist()
+            
+            # Merge on index (sims_df player_id) vs column (actuals_df player_id)
+            # We reset_index on sims_df to make it cleaner
+            sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
+            
+            merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
+            merged['season'] = season
+            merged['week'] = week
+            merged = merged.rename(columns={'score': 'actual'})
+            
+            calibration_results.append(merged)
+            
+        except Exception as e:
+            print(f"Backtesting failed for {season} W{week}: {e}")
+            print("Skipping this week. (Likely missing historical data)")
 
     # 3. Evaluate
     if calibration_results:
@@ -424,20 +442,19 @@ def do_projections(pbp_data, ros_season, current_week, n_projections, version):
         
         # Plotting (might fail in headless env, catch it)
         try:
-            calibration.plot_pit_histogram(evaluated_df, title=f"Calibration (v{version})")
+            calibration.plot_pit_histogram(evaluated_df, title=f"Calibration (v{config.runtime.version})")
             print("Calibration plot displayed (or saved).")
         except Exception as e:
             print(f"Could not generate plot: {e}")
         
         # Save metrics
-        output_path = f"projections/calibration_metrics_v{version}.csv"
+        output_path = f"projections/calibration_metrics_v{config.runtime.version}.csv"
         evaluated_df[['player_id', 'season', 'week', 'actual', 'pit']].to_csv(
             output_path, index=False
         )
         print(f"Calibration metrics saved to {output_path}")
     else:
         print("\nNo backtesting results generated. Calibration skipped.")
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Run NFL Fantasy Projections")
@@ -451,6 +468,13 @@ def parse_args():
 # The primary entry point for the program. Initializes the majority of necessary data.
 if __name__ == "__main__":
     args = parse_args()
+    
+    # Initialize Config
+    config = AppConfig()
+    config.runtime.season = args.season
+    config.runtime.week = args.week
+    config.runtime.n_simulations = args.simulations
+    config.runtime.version = args.version
     
     # Quiet the deprecation warnings in the command line a little.
     warnings.filterwarnings("ignore", category=FutureWarning)
@@ -469,4 +493,4 @@ if __name__ == "__main__":
     years = sorted(list(set([args.season - 1, args.season, 2017, 2018])))
     pbp_data = loader.load_data(years)
     
-    do_projections(pbp_data, args.season, args.week, args.simulations, args.version)
+    do_projections(pbp_data, config)

@@ -1,6 +1,7 @@
 import random
 from collections import defaultdict
 from enums import PlayType, Position
+from settings import ScoringSettings
 
 
 # I think the API I want is something like: result = advance_snap(game_state)
@@ -18,6 +19,7 @@ class GameState:
         away_player_stats,
         home_team_stats,
         away_team_stats,
+        rules: ScoringSettings,
     ):
         # Names of the participating teams
         self.home_team = home_team
@@ -35,6 +37,7 @@ class GameState:
         self.away_score = 0
         # A representation of the yard line, where 0 is the home endzone and 100 is the away endzone
         self.yard_line = 50
+        self.rules = rules
 
         self.completion_model = models["completion_model"]
         self.field_goal_model = models["field_goal_model"]
@@ -85,19 +88,19 @@ class GameState:
 
     def get_defense_score_points(self, score):
         if score == 0:
-            return 10
+            return self.rules.pa_0
         elif score < 7:
-            return 7
+            return self.rules.pa_1_6
         elif score < 14:
-            return 4
+            return self.rules.pa_7_13
         elif score < 21:
-            return 1
+            return self.rules.pa_14_20
         elif score < 28:
-            return 0
+            return self.rules.pa_21_27
         elif score < 35:
-            return -1
+            return self.rules.pa_28_34
         else:
-            return -4
+            return self.rules.pa_35_plus
 
     def change_possession(self):
         if self.posteam == self.home_team:
@@ -208,8 +211,7 @@ class GameState:
                 td = True
                 # Have to do this here because elsewise the kickoff doesn't happen.
                 if self.extra_point():
-                    # TODO: model this
-                    self.fantasy_points[k_id] += 1
+                    self.fantasy_points[k_id] += self.rules.pat_made
 
             else:
                 self.first_down()
@@ -222,7 +224,7 @@ class GameState:
 
         # Tackled for loss into endzone should result in safety.
         elif self.yard_line - yards > 100:
-            self.fantasy_points[self.defteam()] += 2
+            self.fantasy_points[self.defteam()] += self.rules.def_safety
             self.safety()
 
         # If more yards were gained than remaining yards
@@ -239,42 +241,39 @@ class GameState:
 
         # Count the fantasy points for this play.
         if playcall == PlayType.RUN:
-            self.fantasy_points[carrier_id] += 0.1 * yards
+            self.fantasy_points[carrier_id] += self.rules.rush_yard * yards
             carrier["player_name"].values[0]
 
             if td:
-                self.fantasy_points[carrier_id] += 6
+                self.fantasy_points[carrier_id] += self.rules.rush_td
                 if self.extra_point():
-                    # TODO: model this
-                    self.fantasy_points[k_id] += 1
+                    self.fantasy_points[k_id] += self.rules.pat_made
         if (playcall == PlayType.PASS) and (not sack) and (not scramble) and (is_complete):
-            self.fantasy_points[qb_id] += 0.04 * yards
-            target_fpts = 0.5
-            target_fpts += 0.1 * yards
+            self.fantasy_points[qb_id] += self.rules.pass_yard * yards
+            target_fpts = self.rules.reception
+            target_fpts += self.rules.rec_yard * yards
             target["player_name"].values[0]
             if td:
-                self.fantasy_points[qb_id] += 4
-                target_fpts += 6
+                self.fantasy_points[qb_id] += self.rules.pass_td
+                target_fpts += self.rules.rec_td
                 if self.extra_point():
-                    # TODO: model this
-                    self.fantasy_points[k_id] += 1
+                    self.fantasy_points[k_id] += self.rules.pat_made
 
             self.fantasy_points[target_id] += target_fpts
 
         if scramble:
-            self.fantasy_points[qb_id] += 0.1 * yards
+            self.fantasy_points[qb_id] += self.rules.rush_yard * yards
             if td:
-                self.fantasy_points[qb_id] += 6
+                self.fantasy_points[qb_id] += self.rules.rush_td
                 if self.extra_point():
-                    # TODO: model this
-                    self.fantasy_points[k_id] += 1
+                    self.fantasy_points[k_id] += self.rules.pat_made
 
         if interception:
-            self.fantasy_points[qb_id] -= 1.5
-            self.fantasy_points[self.defteam()] += 2
+            self.fantasy_points[qb_id] += self.rules.intercept # usually negative
+            self.fantasy_points[self.defteam()] += self.rules.def_int
 
         if sack:
-            self.fantasy_points[self.defteam()] += 1
+            self.fantasy_points[self.defteam()] += self.rules.def_sack
 
         self.advance_clock(playcall, sack, is_complete, scramble)
 
@@ -422,7 +421,9 @@ class GameState:
         base_probs[RUN_INDEX] -= offense_pass_oe
 
         playcall = random.choices(
-            self.playcall_model.classes_, weights=base_probs, k=1
+            self.playcall_model.classes_,
+            weights=base_probs,
+            k=1
         )[0]
         return playcall
 
@@ -614,11 +615,11 @@ class GameState:
             except IndexError:
                 k_id = "Kicker_%s" % self.posteam
             if kicking_yards <= 39:
-                self.fantasy_points[k_id] += 3
+                self.fantasy_points[k_id] += self.rules.fg_0_39
             elif kicking_yards <= 49:
-                self.fantasy_points[k_id] += 4
+                self.fantasy_points[k_id] += self.rules.fg_40_49
             else:
-                self.fantasy_points[k_id] += 5
+                self.fantasy_points[k_id] += self.rules.fg_50_plus
 
             if self.posteam == self.home_team:
                 self.home_score += 3
@@ -680,7 +681,9 @@ class GameState:
         base_probs[INCOMPLETE_INDEX] = 1 - est_comp
 
         complete = random.choices(
-            self.completion_model.classes_, weights=base_probs, k=1
+            self.completion_model.classes_,
+            weights=base_probs,
+            k=1
         )[0]
 
         return complete
