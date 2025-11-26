@@ -81,17 +81,12 @@ Results will be saved to `projections/calibration_metrics_v{version}.csv`.
 
 ## 🗺️ Development Roadmap
 
-### Phase 1: Accuracy (The "Juice" Update) 🟢
-*   [ ] **Fix Bias:** Current PIT is ~0.58 (Under-prediction). Investigate "Clock Burn" logic and scoring rules to align projections with reality.
-*   [ ] **Probability Math:** Replace linear probability adjustments (e.g., `base_prob + adjustment`) with rigorous Log-Odds updates.
+See [ROADMAP.md](ROADMAP.md) for the detailed feature backlog and future vision.
 
-### Phase 2: Performance (The "Speed" Update) 🟡
-*   [ ] **Feature Store:** Pre-calculate stats/estimators and save to Parquet/DuckDB to eliminate the 10-second startup calculation.
-*   [ ] **DuckDB:** Replace CSV loading with an embedded SQL engine for faster querying.
-
-### Phase 3: Modularity (The "Refactor" Update) 🔴
-*   [ ] **De-God `game.py`:** Split `GameState` into distinct `Clock`, `Scoreboard`, and `Field` components.
-*   [ ] **API:** Expose the engine as a library so it can be run from Jupyter Notebooks or a Web UI.
+Key Priorities:
+1.  **Accuracy:** Fix bias in calibration (currently under-predicting).
+2.  **Architecture:** Decouple scoring rules and control flow.
+3.  **Scale:** Enable massive historical backtesting.
 
 ---
 
