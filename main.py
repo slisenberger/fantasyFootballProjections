@@ -21,7 +21,6 @@ from evaluation import calibration
 from settings import AppConfig
 
 
-# Calculates the fantasy leaders on a given dataframe.
 def calculate_fantasy_leaders(pbp_data, season, week, config):
     data = pbp_data.loc[pbp_data.week == week]
     data = data.loc[data.season == season]
@@ -33,7 +32,6 @@ def calculate_fantasy_leaders(pbp_data, season, week, config):
             for key in play_score.keys():
                 scores[key] += play_score[key]
 
-    # Add defensive points
     games = data.groupby("game_id").tail(1)[
         ["game_id", "away_team", "home_team", "total_away_score", "total_home_score"]
     ]
@@ -45,7 +43,6 @@ def calculate_fantasy_leaders(pbp_data, season, week, config):
     base_data = scores.items()
     all_scores = pd.DataFrame(base_data, columns=["player_id", "score"])
     all_scores_sorted = all_scores.sort_values(by=["score"], ascending=False).dropna()
-    print(all_scores_sorted)
     return all_scores_sorted
 
 
@@ -63,15 +60,8 @@ def build_player_id_map(data):
     return all_players
 
 
-# Projects the a given week's estimated fantasy points.
 def project_week(data, models, season, week, config):
     n = config.runtime.n_simulations
-    
-    # Load the relevant dataset, which includes one week for look-behind calculation of
-    # talent estimators.
-
-    # EXPERIMENT: one season of lookbehind data.
-    # Get this and last season.
     season_data = data.loc[
         (data.season == season - 1) | ((data.season == season) & (data.week < week))
     ]
@@ -79,7 +69,6 @@ def project_week(data, models, season, week, config):
     player_stats = players.calculate(season_data, team_stats, season, week)
     schedules = nfl_data_py.import_schedules([season])
     schedules = schedules.loc[schedules.week == week]
-    # The models used to inform probabilities and choices.
 
     inj_data = injuries.get_injury_data(season, week)
     all_projections = []
@@ -91,62 +80,24 @@ def project_week(data, models, season, week, config):
         player_stats["status"] = "Active"
         player_stats["exp_return"] = None
 
-    # Trim the size of the player_stats object to only necessary fields to save space:
     player_stats = player_stats[
         [
-            # General Info
-            "player_id",
-            "player_name",
-            "position",
-            "team",
-            "status",
-            "exp_return",
-            # Receiving data
-            "relative_air_yards_est",
-            "target_share_est",
-            "redzone_target_share_est",
-            "target_percentage",
-            "targets",
-            "relative_yac",
-            "relative_yac_est",
-            "receiver_cpoe_est",
-            # Rushing data
-            "carry_share_est",
-            "redzone_carry_share_est",
-            "carry_percentage",
-            "carries",
-            "relative_ypc",
-            "relative_ypc_est",
-            # Passing data
-            "cpoe_est",
-            "pass_attempts",
-            "scramble_rate_est",
-            "yards_per_scramble_est",
-            "starting_qb",
-            # Kicking data
-            "kick_attempts",
-            "starting_k",
+            "player_id", "player_name", "position", "team", "status", "exp_return",
+            "relative_air_yards_est", "target_share_est", "redzone_target_share_est",
+            "target_percentage", "targets", "relative_yac", "relative_yac_est",
+            "receiver_cpoe_est", "carry_share_est", "redzone_carry_share_est",
+            "carry_percentage", "carries", "relative_ypc", "relative_ypc_est",
+            "cpoe_est", "pass_attempts", "scramble_rate_est", "yards_per_scramble_est",
+            "starting_qb", "kick_attempts", "starting_k",
         ]
     ]
     team_stats = team_stats[
         [
-            # Basic
-            "team",
-            # Defensive outcome adjustments
-            "defense_relative_ypc_est",
-            "defense_relative_yac_est",
-            "defense_relative_air_yards",
-            "defense_cpoe_est",
-            "defense_int_rate_est",
-            # Offensive outcome adjustments
-            "offense_sacks_per_dropback",
-            "defense_sacks_per_dropback",
-            "offense_sack_rate_est",
-            "defense_sack_rate_est",
-            "lg_sack_rate",
-            # Playcall tendencies
-            "offense_pass_oe_est",
-            "defense_pass_oe_est",
+            "team", "defense_relative_ypc_est", "defense_relative_yac_est",
+            "defense_relative_air_yards", "defense_cpoe_est", "defense_int_rate_est",
+            "offense_sacks_per_dropback", "defense_sacks_per_dropback",
+            "offense_sack_rate_est", "defense_sack_rate_est", "lg_sack_rate",
+            "offense_pass_oe_est", "defense_pass_oe_est",
         ]
     ]
     player_stats["relative_yac_est"].fillna(1, inplace=True)
@@ -157,18 +108,13 @@ def project_week(data, models, season, week, config):
         )
         print("Projecting %s at %s" % (row.away_team, row.home_team))
 
-        # TODO: give questionable players a fractional chance to miss
         game_stats = player_stats.loc[
             player_stats.team.isin([row.home_team, row.away_team])
         ]
         game_stats.loc[game_stats.exp_return > gameday_time]
-        # First get rid of the players that are definitely going to miss time, due to their return date.
         game_stats = game_stats.loc[~(game_stats.exp_return > gameday_time)]
-        # Next, get rid of the players with a status that isn't questionable anyway, since the return
-
         game_stats.loc[game_stats.status == "Questionable"]
         
-        # Check parallel config
         if config.runtime.use_parallel:
             projections = Parallel(n_jobs=-1)(
                 delayed(project_game)(
@@ -190,7 +136,6 @@ def project_week(data, models, season, week, config):
 
 
 def project_game(models, player_stats, team_stats, home, away, week, config):
-    # Here's all data about the players:
     home_player_stats = player_stats[player_stats["team"].isin([home])]
     away_player_stats = player_stats[player_stats["team"].isin([away])]
     home_team_stats = team_stats[team_stats["team"].isin([home])]
@@ -206,6 +151,7 @@ def project_game(models, player_stats, team_stats, home, away, week, config):
         rules=config.scoring
     )
     return game_machine.play_game()
+
 
 def score_predictions(predictions):
     plot_predictions(predictions)
@@ -238,8 +184,6 @@ def plot_predictions(predictions):
         sub.scatter(predicted, actual)
         sub.set_title(position)
 
-    # Values ranging from 1 in 16, 1 in 8, 1 in 4, 1 in 2. This can be interpreted as
-    # once per season, twice per season, etc..
     predictions["p6"] = predictions.quantile(0.0625, axis=1) > predictions["score"]
     predictions["p12"] = predictions.quantile(0.125, axis=1) > predictions["score"]
     predictions["p25"] = predictions.quantile(0.25, axis=1) > predictions["score"]
@@ -273,6 +217,7 @@ def plot_predictions(predictions):
     )
     plt.show()
 
+
 def compute_stats_and_export(projection_data, season, week, version):
     median = projection_data.median(axis=1)
     percentile_12 = projection_data.quantile(0.125, axis=1)
@@ -302,20 +247,26 @@ def compute_stats_and_export(projection_data, season, week, version):
         ]
     ]
 
-    projection_data.to_csv("projections_week_%s_v%s.csv" % (week, version))
-    base_path = os.path.join("projections/", "w%s_v%s_" % (week, version))
-    projection_data.to_csv(base_path + "all.csv")
-    projection_data.loc[projection_data.position == "QB"].to_csv(base_path + "qb.csv")
-    projection_data.loc[projection_data.position == "RB"].to_csv(base_path + "rb.csv")
-    projection_data.loc[projection_data.position == "WR"].to_csv(base_path + "wr.csv")
-    projection_data.loc[projection_data.position == "TE"].to_csv(base_path + "te.csv")
+    # New Structured Output
+    base_dir = os.path.join("projections", f"v{version}", f"week_{week}")
+    os.makedirs(base_dir, exist_ok=True)
+
+    # Save Summary (was projections_week_X_vY.csv)
+    projection_data.to_csv(os.path.join(base_dir, "summary.csv"))
+    
+    # Save Splits
+    projection_data.to_csv(os.path.join(base_dir, "all.csv"))
+    projection_data.loc[projection_data.position == "QB"].to_csv(os.path.join(base_dir, "qb.csv"))
+    projection_data.loc[projection_data.position == "RB"].to_csv(os.path.join(base_dir, "rb.csv"))
+    projection_data.loc[projection_data.position == "WR"].to_csv(os.path.join(base_dir, "wr.csv"))
+    projection_data.loc[projection_data.position == "TE"].to_csv(os.path.join(base_dir, "te.csv"))
     projection_data.loc[projection_data.position.isin(["RB", "WR", "TE"])].to_csv(
-        base_path + "flex.csv"
+        os.path.join(base_dir, "flex.csv")
     )
-    projection_data.loc[projection_data.position == "K"].to_csv(base_path + "k.csv")
+    projection_data.loc[projection_data.position == "K"].to_csv(os.path.join(base_dir, "k.csv"))
+
 
 def project_ros(pbp_data, models, config):
-    # Generate all remaining weeks projection data
     all_weeks = []
     
     season = config.runtime.season
@@ -366,18 +317,24 @@ def project_ros(pbp_data, models, config):
         .reset_index()
     )
 
-    base_path = os.path.join("projections/", "v%s_" % version)
+    # New Structured Output for ROS
+    base_dir = os.path.join("projections", f"v{version}", "ros")
+    os.makedirs(base_dir, exist_ok=True)
+
     ros_sum.merge(roster_data, on="player_id", how="outer")[
         ["player_id", "player_name", "team", "position", "ros_total"]
-    ].to_csv(base_path + "ros_total.csv")
+    ].to_csv(os.path.join(base_dir, "total.csv"))
+    
     ros_mean.merge(roster_data, on="player_id", how="outer")[
         ["player_id", "player_name", "team", "position", "ros_mean"]
-    ].to_csv(base_path + "ros_mean.csv")
+    ].to_csv(os.path.join(base_dir, "mean.csv"))
+    
     playoffs_mean.merge(roster_data, on="player_id", how="outer")[
         ["player_id", "player_name", "team", "position", "playoffs_mean"]
-    ].to_csv(base_path + "playoffs_mean.csv")
+    ].to_csv(os.path.join(base_dir, "playoffs.csv"))
 
-def do_projections(pbp_data, config):
+
+def get_models():
     models = {
         "playcall_model": playcall.build_or_load_playcall_model(),
         "rush_model": rushers.build_or_load_rush_kde(),
@@ -388,12 +345,17 @@ def do_projections(pbp_data, config):
     }
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
+    return models
 
-    # 1. Future Projections
+
+def run_projections(pbp_data, config):
+    models = get_models()
     print(f"--- Generating Projections for Season {config.runtime.season} Week {config.runtime.week}+ ---")
     project_ros(pbp_data, models, config)
 
-    # 2. Backtesting & Calibration
+
+def run_backtest(pbp_data, config):
+    models = get_models()
     print("\n--- Starting Backtesting & Calibration ---")
     calibration_results = []
 
@@ -406,22 +368,14 @@ def do_projections(pbp_data, config):
             print(f"Backtesting {season} Week {week}...")
             
             # A. Run Simulations -> Get Raw Distribution
-            # project_week returns DataFrame with index=player_id, columns=0..N (scores)
-            # Note: project_week uses Parallel internally now.
             sims_df = project_week(pbp_data, models, season, week, config)
             
             # B. Get Actual Outcomes
-            # Returns DataFrame with columns ['player_id', 'score']
             actuals_df = calculate_fantasy_leaders(pbp_data, season, week, config)
             
             # C. Merge
-            # We convert the wide simulation columns into a single list column
             sims_df['simulations'] = sims_df.values.tolist()
-            
-            # Merge on index (sims_df player_id) vs column (actuals_df player_id)
-            # We reset_index on sims_df to make it cleaner
             sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
-            
             merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
             merged['season'] = season
             merged['week'] = week
@@ -437,18 +391,20 @@ def do_projections(pbp_data, config):
     if calibration_results:
         full_calib_df = pd.concat(calibration_results)
         print(f"\nEvaluating Calibration on {len(full_calib_df)} player-games...")
-        
         evaluated_df = calibration.evaluate_calibration(full_calib_df)
         
-        # Plotting (might fail in headless env, catch it)
         try:
             calibration.plot_pit_histogram(evaluated_df, title=f"Calibration (v{config.runtime.version})")
             print("Calibration plot displayed (or saved).")
         except Exception as e:
             print(f"Could not generate plot: {e}")
         
-        # Save metrics
-        output_path = f"projections/calibration_metrics_v{config.runtime.version}.csv"
+        # New Structured Output for Calibration
+        base_dir = os.path.join("projections", f"v{config.runtime.version}", "calibration")
+        os.makedirs(base_dir, exist_ok=True)
+        
+        output_path = os.path.join(base_dir, "metrics.csv")
+        
         evaluated_df[['player_id', 'season', 'week', 'actual', 'pit']].to_csv(
             output_path, index=False
         )
@@ -456,41 +412,62 @@ def do_projections(pbp_data, config):
     else:
         print("\nNo backtesting results generated. Calibration skipped.")
 
+
 def parse_args():
     parser = argparse.ArgumentParser(description="Run NFL Fantasy Projections")
-    parser.add_argument("--season", type=int, default=2024, help="Season to project")
-    parser.add_argument("--week", type=int, default=2, help="Week to project (start)")
-    parser.add_argument("--simulations", type=int, default=5, help="Number of Monte Carlo simulations per game")
-    parser.add_argument("--version", type=str, default="402", help="Version string for output files")
+    subparsers = parser.add_subparsers(dest="command", help="Command to run")
+
+    # Common arguments
+    common_parser = argparse.ArgumentParser(add_help=False)
+    common_parser.add_argument("--season", type=int, default=2024, help="Season")
+    common_parser.add_argument("--week", type=int, default=2, help="Week")
+    common_parser.add_argument("--simulations", type=int, default=5, help="Number of simulations")
+    common_parser.add_argument("--version", type=str, default="402", help="Version tag")
+
+    # Subcommands
+    subparsers.add_parser("project", parents=[common_parser], help="Run future projections")
+    subparsers.add_parser("backtest", parents=[common_parser], help="Run backtesting")
+    subparsers.add_parser("all", parents=[common_parser], help="Run both (default)")
+
     return parser.parse_args()
 
 
-# The primary entry point for the program. Initializes the majority of necessary data.
 if __name__ == "__main__":
     args = parse_args()
     
     # Initialize Config
     config = AppConfig()
-    config.runtime.season = args.season
-    config.runtime.week = args.week
-    config.runtime.n_simulations = args.simulations
-    config.runtime.version = args.version
+    if args.season: config.runtime.season = args.season
+    if args.week: config.runtime.week = args.week
+    if args.simulations: config.runtime.n_simulations = args.simulations
+    if args.version: config.runtime.version = args.version
     
-    # Quiet the deprecation warnings in the command line a little.
-    warnings.filterwarnings("ignore", category=FutureWarning)
+    command = args.command or "all"
 
-    # Modify print settings
+    warnings.filterwarnings("ignore", category=FutureWarning)
     pd.set_option("display.max_rows", 100)
     pd.set_option("display.max_columns", 400)
     
-    # Ensure data for the requested season is available
-    loader.clean_and_save_data([args.season])
-    injuries.clean_and_save_data([args.season])
+    years_to_load = set()
     
-    # Get full datasets for pbp and injuries and rosters for future joining.
-    # Load previous season for context + current season
-    # PLUS 2017/2018 for the smoke test backtesting
-    years = sorted(list(set([args.season - 1, args.season, 2017, 2018])))
-    pbp_data = loader.load_data(years)
+    if command in ["project", "all"]:
+        years_to_load.add(config.runtime.season)
+        years_to_load.add(config.runtime.season - 1)
+        
+    if command in ["backtest", "all"]:
+        # Hardcoded backtest year for now
+        years_to_load.add(2018) 
+        years_to_load.add(2017)
+
+    print(f"Loading data for years: {sorted(list(years_to_load))}")
+    loader.clean_and_save_data(list(years_to_load))
+    injuries.clean_and_save_data(list(years_to_load))
+    pbp_data = loader.load_data(list(years_to_load))
     
-    do_projections(pbp_data, config)
+    if command == "all":
+        run_projections(pbp_data, config)
+        run_backtest(pbp_data, config)
+    elif command == "project":
+        run_projections(pbp_data, config)
+    elif command == "backtest":
+        run_backtest(pbp_data, config)

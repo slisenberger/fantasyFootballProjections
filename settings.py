@@ -4,6 +4,8 @@ from typing import Dict, Optional
 class ScoringSettings(BaseModel):
     """Configuration for Fantasy Scoring Rules."""
     
+    name: str = Field("Half PPR", description="Name of the scoring profile")
+    
     # Rushing
     rush_td: float = Field(6.0, description="Points per Rushing TD")
     rush_yard: float = Field(0.1, description="Points per Rushing Yard")

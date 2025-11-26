@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.env
+.DS_Store
+
+# Generated Projections
+projections/
+projections_*.csv
+output/
+
+# Local dev
+.gemini/
+.idea/
+.vscode/
