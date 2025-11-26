@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-from scipy.stats import gumbel_r
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
 import pandas as pd
@@ -8,6 +7,7 @@ import joblib
 
 rush_model_name = "models/trained_models/rushing_yards_kde"
 scramble_model_name = "models/trained_models/scramble_yards_kde"
+
 
 def build_or_load_rush_kde():
     try:
@@ -19,6 +19,7 @@ def build_or_load_rush_kde():
         model = fit_kde(all_rush)
         joblib.dump(model, rush_model_name)
         return model
+
 
 def build_or_load_scramble_kde():
     try:
@@ -36,8 +37,9 @@ def rusher_data():
     YEARS = [2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
     for i in YEARS:
-        i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
-                             compression='gzip', low_memory=False)
+        i_data = pd.read_csv(
+            "data/pbp_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
+        )
 
         data = pd.concat([data, i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
@@ -45,12 +47,11 @@ def rusher_data():
 
 
 def fit_kde(data):
-    array_like = data.values.reshape(-1,1)
-    params = {'bandwidth': np.logspace(-1, 1, 20)}
+    array_like = data.values.reshape(-1, 1)
+    params = {"bandwidth": np.logspace(-1, 1, 20)}
     grid = GridSearchCV(KernelDensity(), params)
     kde = grid.fit(array_like).best_estimator_
-    x = np.linspace(data.min(),
-                    data.max(), 100)
+    x = np.linspace(data.min(), data.max(), 100)
     log_dens = kde.score_samples(x.reshape(-1, 1))
 
     # Plot it all
@@ -65,6 +66,7 @@ def fit_kde(data):
     ax3.hist(synthetic, color="blue", bins=50)
     plt.show()
     return kde
+
 
 def plot_kde_samples(kde):
     # Plot it all
