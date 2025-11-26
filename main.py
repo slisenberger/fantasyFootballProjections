@@ -77,9 +77,14 @@ def project_week(data, models, season, week, n):
 
     inj_data = injuries.get_injury_data(season, week)
     all_projections = []
-    player_stats = player_stats.merge(
-        inj_data[["player_id", "status", "exp_return"]], on="player_id", how="left"
-    )
+    if inj_data is not None:
+        player_stats = player_stats.merge(
+            inj_data[["player_id", "status", "exp_return"]], on="player_id", how="left"
+        )
+    else:
+        player_stats["status"] = "Active"
+        player_stats["exp_return"] = None
+
     # Trim the size of the player_stats object to only necessary fields to save space:
     player_stats = player_stats[
         [
@@ -384,36 +389,31 @@ def do_projections(pbp_data, ros_season, current_week, n_projections, version):
     backtest_config = [(2018, 8)] 
 
     for season, week in backtest_config:
-        try:
-            print(f"Backtesting {season} Week {week}...")
-            
-            # A. Run Simulations -> Get Raw Distribution
-            # project_week returns DataFrame with index=player_id, columns=0..N (scores)
-            # Note: project_week uses Parallel internally now.
-            sims_df = project_week(pbp_data, models, season, week, n_projections)
-            
-            # B. Get Actual Outcomes
-            # Returns DataFrame with columns ['player_id', 'score']
-            actuals_df = calculate_fantasy_leaders(pbp_data, season, week)
-            
-            # C. Merge
-            # We convert the wide simulation columns into a single list column
-            sims_df['simulations'] = sims_df.values.tolist()
-            
-            # Merge on index (sims_df player_id) vs column (actuals_df player_id)
-            # We reset_index on sims_df to make it cleaner
-            sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
-            
-            merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
-            merged['season'] = season
-            merged['week'] = week
-            merged = merged.rename(columns={'score': 'actual'})
-            
-            calibration_results.append(merged)
-            
-        except Exception as e:
-            print(f"Backtesting failed for {season} W{week}: {e}")
-            print("Skipping this week. (Likely missing historical data)")
+        print(f"Backtesting {season} Week {week}...")
+        
+        # A. Run Simulations -> Get Raw Distribution
+        # project_week returns DataFrame with index=player_id, columns=0..N (scores)
+        # Note: project_week uses Parallel internally now.
+        sims_df = project_week(pbp_data, models, season, week, n_projections)
+        
+        # B. Get Actual Outcomes
+        # Returns DataFrame with columns ['player_id', 'score']
+        actuals_df = calculate_fantasy_leaders(pbp_data, season, week)
+        
+        # C. Merge
+        # We convert the wide simulation columns into a single list column
+        sims_df['simulations'] = sims_df.values.tolist()
+        
+        # Merge on index (sims_df player_id) vs column (actuals_df player_id)
+        # We reset_index on sims_df to make it cleaner
+        sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
+        
+        merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
+        merged['season'] = season
+        merged['week'] = week
+        merged = merged.rename(columns={'score': 'actual'})
+        
+        calibration_results.append(merged)
 
     # 3. Evaluate
     if calibration_results:
@@ -465,6 +465,8 @@ if __name__ == "__main__":
     
     # Get full datasets for pbp and injuries and rosters for future joining.
     # Load previous season for context + current season
-    pbp_data = loader.load_data([args.season - 1, args.season])
+    # PLUS 2017/2018 for the smoke test backtesting
+    years = sorted(list(set([args.season - 1, args.season, 2017, 2018])))
+    pbp_data = loader.load_data(years)
     
     do_projections(pbp_data, args.season, args.week, args.simulations, args.version)
