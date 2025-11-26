@@ -23,7 +23,7 @@ def build_completion_model():
         i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
                              compression='gzip', low_memory=False)
 
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data,i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = data.loc[(data.play_type.isin(['pass']))].loc[data.pass_attempt == True].loc[data.two_point_attempt == False].loc[data.sack == False].loc[data.fumble == False]
     feature_cols = ['down', 'ydstogo', 'yardline_100', 'air_yards']

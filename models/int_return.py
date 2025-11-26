@@ -20,13 +20,13 @@ def build_or_load_int_return_kde():
 
 
 def int_return_data():
-    YEARS = [2016, 2017, 2018, 2019, 2020, 2021]
+    YEARS = [2018, 2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
     for i in YEARS:
         i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
                              compression='gzip', low_memory=False)
 
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data,i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
     return data
 

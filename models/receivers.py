@@ -107,7 +107,7 @@ def build_or_load_te_yac_kde(data):
         return model
 
 def receiver_data():
-    YEARS = [2017, 2018, 2019, 2020, 2021]
+    YEARS = [2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
     for i in YEARS:
         i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
@@ -116,9 +116,9 @@ def receiver_data():
         # Reduce the size of the datasets to make the join easier.
         i_data = i_data.loc[~i_data.receiver_player_id.isnull()][
             ["receiver_player_id", "air_yards", "yards_after_catch"]]
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data,i_data], sort=True)
     data = data.rename(columns={'receiver_player_id': 'player_id'})
-    roster_data = nfl_data_py.import_rosters(
+    roster_data = nfl_data_py.import_seasonal_rosters(
         [2017, 2018, 2019, 2020, 2021], columns=["player_id", "position", "player_name"]).drop_duplicates()
     data = data.merge(roster_data, on="player_id", how="left")
     return data

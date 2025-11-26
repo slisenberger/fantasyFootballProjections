@@ -38,21 +38,20 @@ def test_playcall_model(model):
 # run/pass/kick/punt from the gamestate.
 def build_playcall_model():
     # get the baseline data
-    YEARS = [2016, 2017, 2018, 2020, 2021]
+    YEARS = [2018, 2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
     for i in YEARS:
         i_data = pd.read_csv('data/pbp_' + str(i) + '.csv.gz',
                              compression='gzip', low_memory=False)
 
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data,i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = data.loc[(data.play_type.isin(['punt', 'field_goal', 'pass', 'run']))].loc[data.two_point_attempt == False]
     # Give data Pass/Run/Punt/Kick Labels
     feature_cols = ['down', 'ydstogo', 'score_differential', 'quarter_seconds_remaining', 'qtr', 'yardline_100']
+    meaningful_plays.dropna(inplace=True, subset=feature_cols)
     X = meaningful_plays[feature_cols]
-    X_nan = X[X.isna().any(axis=1)]
     Y = meaningful_plays['play_type']
-    print(X_nan)
     # Split the data randomly
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=.25)
 

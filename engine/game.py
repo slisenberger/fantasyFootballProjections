@@ -51,6 +51,12 @@ class GameState:
       self.away_player_stats = away_player_stats
       self.home_team_stats = home_team_stats
       self.away_team_stats = away_team_stats
+      
+      if self.home_team_stats.empty:
+          print(f"CRITICAL: Home team stats empty for {home_team}")
+      if self.away_team_stats.empty:
+          print(f"CRITICAL: Away team stats empty for {away_team}")
+
       self.fantasy_points = defaultdict(float)
 
   def play_game(self):
@@ -159,7 +165,6 @@ class GameState:
 
     if playcall == "field_goal":
         self.field_goal()
-        k = self.choose_kicker()
         return
 
     k = self.choose_kicker()
@@ -168,7 +173,6 @@ class GameState:
     except IndexError:
       k_id = "Kicker_%s" % self.posteam
 
-    # TODO: Handle return yards. currenly assumes no return.
     if interception:
         # Advance the ball the point of the air yards.
         self.yard_line -= air_yards
@@ -401,9 +405,10 @@ class GameState:
       max_tgt_share = .5
       pos_player_stats = self.get_pos_player_stats()
       eligible_targets = pos_player_stats.loc[pos_player_stats["target_percentage"] > 0][
-          ["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est",
+          ["player_id", "player_name", "position", "relative_air_yards_est", "target_share_est", "redzone_target_share_est",
            "targets", "relative_yac", "relative_yac_est", "receiver_cpoe_est"]]
       weights = eligible_targets["target_share_est"].tolist()
+      rz_weights = eligible_targets["redzone_target_share_est"].tolist()
       # Normalize weights to sum to 1, and then continue mixing
       # in a uniform distribution until we are below our
       # maximum target share.
@@ -433,9 +438,12 @@ class GameState:
   def choose_carrier(self):
       pos_player_stats = self.get_pos_player_stats()
       eligible_carriers = pos_player_stats.loc[pos_player_stats["carry_percentage"] > 0][[
-          "player_id", "player_name", "carry_share_est",
+          "player_id", "player_name", "carry_share_est", "redzone_carry_share_est",
           "carries", "relative_ypc", "relative_ypc_est"]]
-      carrier = random.choices(eligible_carriers["player_id"].tolist(), weights=eligible_carriers["carry_share_est"].tolist(), k=1)[0]
+      weights = eligible_carriers["carry_share_est"].tolist()
+      rz_weights = eligible_carriers["redzone_carry_share_est"].tolist()
+      # Use red zone data in producing target and carry estimations.
+      carrier = random.choices(eligible_carriers["player_id"].tolist(), weights=weights, k=1)[0]
       return eligible_carriers.loc[eligible_carriers["player_id"] == carrier]
 
   def choose_quarterback(self):

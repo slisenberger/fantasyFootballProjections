@@ -9,7 +9,7 @@ def load_data(years):
         print("importing data from year %s" % i)
         i_data = pd.read_csv(
             'data/pbp_' + str(i) + '.csv.gz', compression='gzip', low_memory=False)
-        data = data.append(i_data, sort=True)
+        data = pd.concat([data, i_data], sort=True)
 
     data.reset_index(drop=True, inplace=True)
     return data
@@ -18,11 +18,11 @@ def load_data(years):
 def clean_and_save_data(years=[]):
     # Default to the most recent year.
     if not years:
-        years = [2021]
+        years = [2022]
 
     for i in years:
         # Link to data repo
-        link = 'https://github.com/guga31bb/nflfastR-data/blob/master/data/play_by_play_' + str(i) + '.csv.gz?raw=true'
+        link = 'https://github.com/nflverse/nflverse-data/releases/download/pbp/play_by_play_' + str(i) + '.csv.gz?raw=true'
         # Read in CSV
         data = pd.read_csv(link, compression='gzip', low_memory=False)
         # Filter to regular season data only
@@ -47,7 +47,7 @@ def clean_and_save_data(years=[]):
              "opp_safety_prob", "opp_td_prob", "fg_prob", "safety_prob", "td_prob", "extra_point_prob",
              "two_point_conversion_prob"], axis=1)
 
-        roster_data = nfl_data_py.import_rosters(
+        roster_data = nfl_data_py.import_seasonal_rosters(
             [i], columns=["player_id", "position"])
         receiver_roster_data = roster_data.rename(
             columns={"position": "position_receiver", "player_id": "receiver_player_id"})[

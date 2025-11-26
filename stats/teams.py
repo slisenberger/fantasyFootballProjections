@@ -98,28 +98,31 @@ def calculate(data, season):
         .sort_values().to_frame(name="offense_holds_drawn").reset_index() \
         .rename(columns={'posteam': 'team'})
 
-    team_stats = pass_happiness_offense\
-        .merge(pass_happiness_offense_est, on="team") \
-        .merge(pass_suppression_defense, on="team") \
-        .merge(pass_suppression_defense_est, on="team") \
-        .merge(goal_line_pass_happiness_offense, on="team")\
-        .merge(total_relevant_snaps_offense, on="team")\
-        .merge(total_relevant_snaps_defense, on="team")\
-        .merge(dropbacks, on="team") \
-        .merge(dropbacks_def, on="team") \
-        .merge(mean_yac, on="team") \
-        .merge(yac_est, on="team") \
-        .merge(mean_cpoe, on="team") \
-        .merge(cpoe_est, on="team") \
-        .merge(mean_air_yards, on="team") \
-        .merge(mean_ypc, on="team")\
-        .merge(ypc_est, on="team")\
-        .merge(targets, on="team")\
-        .merge(carries, on="team")\
+    all_teams = pd.DataFrame(pd.concat([data['posteam'], data['defteam']]).dropna().unique(), columns=['team'])
+
+    team_stats = all_teams\
+        .merge(pass_happiness_offense, on="team", how="left")\
+        .merge(pass_happiness_offense_est, on="team", how="left") \
+        .merge(pass_suppression_defense, on="team", how="left") \
+        .merge(pass_suppression_defense_est, on="team", how="left") \
+        .merge(goal_line_pass_happiness_offense, on="team", how="left")\
+        .merge(total_relevant_snaps_offense, on="team", how="left")\
+        .merge(total_relevant_snaps_defense, on="team", how="left")\
+        .merge(dropbacks, on="team", how="left") \
+        .merge(dropbacks_def, on="team", how="left") \
+        .merge(mean_yac, on="team", how="left") \
+        .merge(yac_est, on="team", how="left") \
+        .merge(mean_cpoe, on="team", how="left") \
+        .merge(cpoe_est, on="team", how="left") \
+        .merge(mean_air_yards, on="team", how="left") \
+        .merge(mean_ypc, on="team", how="left")\
+        .merge(ypc_est, on="team", how="left")\
+        .merge(targets, on="team", how="left")\
+        .merge(carries, on="team", how="left")\
         .merge(red_zone_targets, how="left", on="team")\
         .merge(red_zone_carries, how="left", on="team")\
         .merge(deep_targets, how="left", on="team")\
-        .merge(def_sacks, on="team")\
+        .merge(def_sacks, how="left", on="team")\
         .merge(def_int, how="left", on="team")\
         .merge(def_qb_hits, how="left", on="team")\
         .merge(off_sacks, how="left", on="team")\

@@ -283,9 +283,11 @@ def compute_air_yards_estimator(data):
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:
-      all_biased_data = pd.concat([all_biased_data,
-                                   data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["air_yards"]
-              .apply(lambda d: prepend(d, get_prior(pos))).to_frame()])
+        all_biased_data.append(
+          data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["air_yards"]
+              .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
+    biased_ay = pd.concat(all_biased_data)
+    print(biased_ay)
     ay_est = biased_ay.groupby(["receiver_player_id"])["air_yards"].apply(lambda x: x.ewm(span=air_yards_span, adjust=False).mean()).to_frame()
     ay_est_now = ay_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'air_yards': 'air_yards_est'})[["player_id", "air_yards_est"]]
     return ay_est_now
@@ -335,10 +337,10 @@ def compute_yac_estimator(data):
     all_biased_data = []
     # For each position, get that position's data, break down by receiver ID, and apply a special prior
     for pos in ["RB", "WR", "TE", "FB"]:
-        all_biased_data = pd.concat(
-            [all_biased_data,
-             data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["yards_after_catch"]
-             .apply(lambda d: prepend(d, get_prior(pos))).to_frame()])
+         all_biased_data.append(
+            data.loc[data.position_receiver == pos].groupby(["receiver_player_id"])["yards_after_catch"]
+                .apply(lambda d: prepend(d, get_prior(pos))).to_frame())
+
     biased_yac = pd.concat(all_biased_data)
     yac_est = biased_yac.groupby(["receiver_player_id"])["yards_after_catch"].apply(lambda x: x.ewm(span=yac_span, adjust=False).mean()).to_frame()
     yac_est_now = yac_est.groupby(["receiver_player_id"]).tail(1).reset_index().rename(columns={'receiver_player_id': 'player_id', 'yards_after_catch': 'yac_est'})[
