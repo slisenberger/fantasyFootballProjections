@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.calibration import CalibrationDisplay
+from joblib import Parallel, delayed
 import score
 import warnings
 import os
@@ -154,13 +155,12 @@ def project_week(data, models, season, week, n):
         # Next, get rid of the players with a status that isn't questionable anyway, since the return
 
         game_stats.loc[game_stats.status == "Questionable"]
-        projections = []
-        for i in range(n):
-            projections.append(
-                project_game(
-                    models, game_stats, team_stats, row.home_team, row.away_team, week
-                )
+        projections = Parallel(n_jobs=-1)(
+            delayed(project_game)(
+                models, game_stats, team_stats, row.home_team, row.away_team, week
             )
+            for i in range(n)
+        )
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
