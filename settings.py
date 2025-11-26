@@ -1,3 +1,5 @@
+import os
+import yaml
 from pydantic import BaseModel, Field
 from typing import Dict, Optional
 
@@ -70,7 +72,19 @@ class AppConfig(BaseModel):
     runtime: RuntimeSettings = Field(default_factory=RuntimeSettings)
 
     @classmethod
-    def load(cls):
-        # In the future, we can load from yaml/json/env here.
-        # For now, just return defaults.
-        return cls()
+    def load(cls, scoring_file: str = "config/scoring.yaml"):
+        """
+        Loads configuration. Prioritizes loading scoring rules from a YAML file.
+        """
+        scoring_config = {}
+        if os.path.exists(scoring_file):
+            try:
+                with open(scoring_file, 'r') as f:
+                    scoring_config = yaml.safe_load(f) or {}
+            except Exception as e:
+                print(f"Warning: Failed to load {scoring_file}: {e}. Using defaults.")
+        
+        # Create ScoringSettings from dict (merged with defaults by Pydantic)
+        scoring = ScoringSettings(**scoring_config)
+        
+        return cls(scoring=scoring)

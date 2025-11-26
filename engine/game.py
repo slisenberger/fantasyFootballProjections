@@ -42,21 +42,25 @@ class GameState:
         self.completion_model = models["completion_model"]
         self.field_goal_model = models["field_goal_model"]
         self.playcall_model = models["playcall_model"]
-        self.air_yards_models = {
-            Position.RB: models["air_yards_RB"],
-            Position.TE: models["air_yards_TE"],
-            Position.WR: models["air_yards_WR"],
-            "ALL": models["air_yards_ALL"],
+        
+        # Retrieve pre-sampled buffers from models dict (Optimization)
+        self.air_yards_samples = {
+            Position.RB: models["air_yards_RB_samples"],
+            Position.TE: models["air_yards_TE_samples"],
+            Position.WR: models["air_yards_WR_samples"],
+            "ALL": models["air_yards_ALL_samples"],
         }
-        self.yac_models = {
-            Position.RB: models["yac_RB"],
-            Position.TE: models["yac_TE"],
-            Position.WR: models["yac_WR"],
-            "ALL": models["yac_ALL"],
+        
+        self.yac_samples = {
+            Position.RB: models["yac_RB_samples"],
+            Position.TE: models["yac_TE_samples"],
+            Position.WR: models["yac_WR_samples"],
+            "ALL": models["yac_ALL_samples"],
         }
-        self.rush_model = models["rush_model"]
-        self.scramble_model = models["scramble_model"]
-        self.int_return_model = models["int_return_model"]
+        
+        self.rush_samples = models["rush_samples"]
+        self.scramble_samples = models["scramble_samples"]
+        self.int_return_samples = models["int_return_samples"]
 
         self.game_over = False
 
@@ -72,6 +76,11 @@ class GameState:
             print(f"CRITICAL: Away team stats empty for {away_team}")
 
         self.fantasy_points = defaultdict(float)
+
+    def _get_sample(self, samples):
+        """Fast random access from pre-calculated buffer."""
+        # random.choice on numpy array is fast enough for our needs compared to KDE tree traversal
+        return random.choice(samples)
 
     def play_game(self):
         self.opening_kickoff()
@@ -198,7 +207,7 @@ class GameState:
             self.yard_line -= air_yards
             # Change possession and return
             self.change_possession()
-            return_yards = self.int_return_model.sample(n_samples=1)[0][0]
+            return_yards = self._get_sample(self.int_return_samples)
             self.yard_line -= return_yards
 
             # Handle touchback
@@ -363,10 +372,10 @@ class GameState:
 
     def game_end(self):
         self.game_over = True
-        print(
-            "%s %s - %s %s" 
-            % (self.home_team, self.home_score, self.away_team, self.away_score)
-        )
+        # print(
+        #     "%s %s - %s %s" 
+        #     % (self.home_team, self.home_score, self.away_team, self.away_score)
+        # )
 
     def turnover_on_downs(self):
         self.change_possession()
@@ -527,9 +536,9 @@ class GameState:
         # Use special position trained models at first, before adjusting.
 
         if pos in [Position.WR, Position.RB, Position.TE]:
-            base = self.air_yards_models[pos].sample(n_samples=1)[0][0]
+            base = self._get_sample(self.air_yards_samples[pos])
         else:
-            base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
+            base = self._get_sample(self.air_yards_samples["ALL"])
 
         defense_relative_air_yards = self.get_def_team_stats()[
             "defense_relative_air_yards"
@@ -553,9 +562,9 @@ class GameState:
         pos = target["position"].values[0]
         # Use special position trained models at first, before adjusting.
         if pos in [Position.WR, Position.RB, Position.TE]:
-            yac = self.yac_models[pos].sample(n_samples=1)[0][0]
+            yac = self._get_sample(self.yac_samples[pos])
         else:
-            yac = self.yac_models["ALL"].sample(n_samples=1)[0][0]
+            yac = self._get_sample(self.yac_samples["ALL"])
         # Come up with a way to handle small sample high yac players
         relative_yac_est = target["relative_yac_est"].values[0]
         defense_relative_yac = self.get_def_team_stats()[
@@ -567,23 +576,20 @@ class GameState:
         return yac
 
     def compute_carry_yards(self, carrier):
-        # TODO: Sample more and keep the largest to simulate big carries for backs who get them.
-        yards = self.rush_model.sample(n_samples=1)[0]
-        # Come up with a way to handle small sample high yac players
-
+        # Sample from pre-computed buffer
+        yards = self._get_sample(self.rush_samples)
+        
         relative_ypc_est = carrier["relative_ypc_est"].values[0]
         defense_relative_ypc = self.get_def_team_stats()[
             "defense_relative_ypc_est"
         ].values[0]
         yards *= defense_relative_ypc
-        yards *= relative_ypc_est
-
-        return yards[0]
+        
+        return yards
 
     def compute_scramble_yards(self, qb):
-        yards = self.scramble_model.sample(n_samples=1)[0]
-        # Come up with a way to handle small sample high yac players
-        return yards[0]
+        yards = self._get_sample(self.scramble_samples)
+        return yards
 
     def punt(self):
         punt_distance = 45
@@ -695,8 +701,6 @@ class GameState:
             return self.away_team
 
 
-# Helper function for estimating the probability of an event, given two
-# team trends (p1 and p2) and the lg average.
 def compute_odds_ratio(p1, p2, lg):
     odds_ratio_p1 = p1 / (1 - p1)
     odds_ratio_p2 = p2 / (1 - p2)

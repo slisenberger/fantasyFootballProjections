@@ -345,6 +345,28 @@ def get_models():
     }
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
+
+    # Optimization: Pre-sample KDEs to avoid expensive sampling during simulation loops
+    # This moves the cost from O(simulations * plays) to O(1) per execution
+    SAMPLE_SIZE = 100000
+    
+    # Core Movement Models
+    models["rush_samples"] = models["rush_model"].sample(SAMPLE_SIZE).flatten()
+    models["scramble_samples"] = models["scramble_model"].sample(SAMPLE_SIZE).flatten()
+    models["int_return_samples"] = models["int_return_model"].sample(SAMPLE_SIZE).flatten()
+    
+    # Receiver Models (Air Yards & YAC)
+    for pos in ["RB", "WR", "TE", "ALL"]:
+        # Air Yards
+        key_ay = f"air_yards_{pos}"
+        if key_ay in models:
+            models[f"{key_ay}_samples"] = models[key_ay].sample(SAMPLE_SIZE).flatten()
+        
+        # YAC
+        key_yac = f"yac_{pos}"
+        if key_yac in models:
+            models[f"{key_yac}_samples"] = models[key_yac].sample(SAMPLE_SIZE).flatten()
+
     return models
 
 
@@ -436,7 +458,7 @@ if __name__ == "__main__":
     args = parse_args()
     
     # Initialize Config
-    config = AppConfig()
+    config = AppConfig.load() # Load from scoring.yaml by default
     if args.season: config.runtime.season = args.season
     if args.week: config.runtime.week = args.week
     if args.simulations: config.runtime.n_simulations = args.simulations

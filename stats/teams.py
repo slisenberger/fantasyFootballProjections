@@ -8,14 +8,13 @@ def calculate(data, season):
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
-    lvg_avg_int_rate = (
-        data.loc[data.interception == 1].shape[0]
-        / data.loc[data.play_type.isin(["pass"])].shape[0]
-    )
-    lvg_avg_sack_rate = (
-        data.loc[data.sack == 1].shape[0]
-        / data.loc[data.play_type.isin(["pass"])].shape[0]
-    )
+    n_pass_plays = data.loc[data.play_type.isin(["pass"])].shape[0]
+    if n_pass_plays > 0:
+        lvg_avg_int_rate = data.loc[data.interception == 1].shape[0] / n_pass_plays
+        lvg_avg_sack_rate = data.loc[data.sack == 1].shape[0] / n_pass_plays
+    else:
+        lvg_avg_int_rate = 0.0
+        lvg_avg_sack_rate = 0.0
 
     pass_happiness_offense = (
         data.groupby("posteam")["pass_oe"]
