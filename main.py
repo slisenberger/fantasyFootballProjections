@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics import r2_score, mean_squared_error
 from sklearn.calibration import CalibrationDisplay
 from joblib import Parallel, delayed
+from evaluation import calibration
 import score
 import warnings
 import os
@@ -370,43 +371,72 @@ def do_projections(pbp_data, ros_season, current_week, n_projections, version):
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
 
-    # Generate projections for all remaining weeks and ROS metadata.
+    # 1. Future Projections
+    print(f"--- Generating Projections for Season {ros_season} Week {current_week}+ ---")
     project_ros(pbp_data, models, ros_season, current_week, n_projections, version)
 
-    # Run backtesting against previous years to assess model predictive ability.
-    all_prediction_data = []
-    # For smoke testing, we just run 1 week. In production, this should be configurable.
-    for season in range(2018, 2019):
-        for week in range(8, 9):
-            print("Running projections on %s Week %s" % (season, week))
-            prediction_data = project_week(
-                pbp_data, models, season, week, 5
-            ).reset_index()
-            prediction_data = prediction_data.assign(mean=prediction_data.mean(axis=1))
-            prediction_data = prediction_data.rename(columns={"index": "player_id"})
+    # 2. Backtesting & Calibration
+    print("\n--- Starting Backtesting & Calibration ---")
+    calibration_results = []
 
-            prediction_data = prediction_data.merge(
-                calculate_fantasy_leaders(pbp_data, season, week),
-                on="player_id",
-                how="outer",
-            )
-            roster_data = nfl_data_py.import_seasonal_rosters(
-                [season], columns=["player_id", "position", "player_name", "team"]
-            )
-            prediction_data = prediction_data.merge(
-                roster_data, on="player_id", how="left"
-            )
-            prediction_data["position"].fillna("DEF", inplace=True)
-            prediction_data = prediction_data.assign(week=week)
-            prediction_data = prediction_data.assign(season=season)
-            all_prediction_data.append(prediction_data)
+    # Configurable backtest range (hardcoded for smoke test)
+    # In a real run, this would loop over [2018, 2019...] and weeks [1..17]
+    backtest_config = [(2018, 8)] 
 
-    full_data = pd.concat(all_prediction_data)
-    scores = score_predictions(full_data)
-    scores.to_csv("projection_test_scores_v%s.csv" % version)
-    full_data[
-        ["player_id", "player_name", "position", "team", "week", "mean", "score"]
-    ].to_csv("projection_raw_values_v%s.csv" % version)
+    for season, week in backtest_config:
+        try:
+            print(f"Backtesting {season} Week {week}...")
+            
+            # A. Run Simulations -> Get Raw Distribution
+            # project_week returns DataFrame with index=player_id, columns=0..N (scores)
+            # Note: project_week uses Parallel internally now.
+            sims_df = project_week(pbp_data, models, season, week, n_projections)
+            
+            # B. Get Actual Outcomes
+            # Returns DataFrame with columns ['player_id', 'score']
+            actuals_df = calculate_fantasy_leaders(pbp_data, season, week)
+            
+            # C. Merge
+            # We convert the wide simulation columns into a single list column
+            sims_df['simulations'] = sims_df.values.tolist()
+            
+            # Merge on index (sims_df player_id) vs column (actuals_df player_id)
+            # We reset_index on sims_df to make it cleaner
+            sims_df = sims_df.reset_index().rename(columns={'index': 'player_id'})
+            
+            merged = sims_df[['player_id', 'simulations']].merge(actuals_df, on='player_id')
+            merged['season'] = season
+            merged['week'] = week
+            merged = merged.rename(columns={'score': 'actual'})
+            
+            calibration_results.append(merged)
+            
+        except Exception as e:
+            print(f"Backtesting failed for {season} W{week}: {e}")
+            print("Skipping this week. (Likely missing historical data)")
+
+    # 3. Evaluate
+    if calibration_results:
+        full_calib_df = pd.concat(calibration_results)
+        print(f"\nEvaluating Calibration on {len(full_calib_df)} player-games...")
+        
+        evaluated_df = calibration.evaluate_calibration(full_calib_df)
+        
+        # Plotting (might fail in headless env, catch it)
+        try:
+            calibration.plot_pit_histogram(evaluated_df, title=f"Calibration (v{version})")
+            print("Calibration plot displayed (or saved).")
+        except Exception as e:
+            print(f"Could not generate plot: {e}")
+        
+        # Save metrics
+        output_path = f"projections/calibration_metrics_v{version}.csv"
+        evaluated_df[['player_id', 'season', 'week', 'actual', 'pit']].to_csv(
+            output_path, index=False
+        )
+        print(f"Calibration metrics saved to {output_path}")
+    else:
+        print("\nNo backtesting results generated. Calibration skipped.")
 
 
 def parse_args():
