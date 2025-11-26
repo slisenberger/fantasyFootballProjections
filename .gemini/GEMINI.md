@@ -1,0 +1,19 @@
+# Project Context: Fantasy Football Projections
+
+## 🏗️ Architecture & Stack
+- **Domain:** Monte Carlo simulation of NFL games for fantasy projections.
+- **Stack:** Python 3.10+, Poetry, Pandas, Scikit-Learn, Joblib (Parallelism).
+- **Key Components:**
+    - `engine/game.py`: The core physics engine (God Class, refactoring in progress).
+    - `main.py`: Orchestrator with CLI subcommands (`project`, `backtest`).
+    - `settings.py`: Pydantic configuration (Scoring, Runtime).
+    - `evaluation/calibration.py`: Truth harness (PIT metrics).
+- **Philosophy:** Probabilistic distributions > Point estimates. Calibration is the primary metric of success.
+
+## 🧠 Lessons Learned & Guidelines
+- **Documentation:** Always update relevant documentation (e.g., `README.md`, `BENCHMARKS.md`, `ROADMAP.md`) after delivering improvements or significant changes.
+- **Workflow:** Prioritize "Robustness" and "Correctness" over quick hacks. Always verify backtesting actually produces metrics.
+- **Coding Style:** Use Enums (`PlayType`, `Position`) instead of strings. Use Pydantic for config. Avoid magic numbers.
+- **Testing:** Validating `Calibration` (PIT Histograms) is the preferred acceptance test.
+- **Pandas:** Avoid boolean indexing on non-boolean columns (e.g., use `df.loc[df.col == 1]`, not `df.loc[df.col]`).
+- **Data:** Historical data loading requires `season-1` context.

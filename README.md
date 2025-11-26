@@ -42,27 +42,36 @@ poetry run python main.py --season 2023 --week 5 --simulations 100
 
 ---
 
-## 🧪 Calibration & Backtesting
+## 🏃 How to Run Benchmarks
 
-The engine includes a **Calibration Harness** to scientifically measure reliability.
-
-### How it works
-1.  **Backtest:** The system simulates past games (e.g., 2018 Week 8).
-2.  **PIT Calculation:** For every player, we calculate the **Probability Integral Transform (PIT)**.
-    *   *Definition:* The percentile of the *Actual Score* within the *Predicted Distribution*.
-    *   *Example:* If we predicted a range of 10-20 points, and the player scored 18, the PIT might be 0.80.
-3.  **Metrics:**
-    *   **Mean PIT:** Should be `0.50`.
-        *   `> 0.5`: Model Under-predicts (Actuals are higher than expected).
-        *   `< 0.5`: Model Over-predicts (Actuals are lower than expected).
-    *   **Uniformity:** A flat histogram indicates perfect calibration.
-
-### Running a Calibration Check
-Run with a high simulation count (e.g., 96) to get smooth distributions:
 ```bash
-poetry run python main.py --simulations 96 --version "calibration_test"
+# Run the full suite (approx 5-10 mins)
+poetry run python benchmark.py --simulations 50 --version v403_candidate
 ```
-Results will be saved to `projections/calibration_metrics_v{version}.csv`.
+
+This will save results to `benchmarks/results_v403_candidate.json` and a detailed CSV.
+
+---
+
+## 🧪 Testing
+
+The project now includes a test harness using `pytest` to ensure code quality and prevent regressions.
+
+*   **Unit Tests:** Located in `tests/test_*.py`, these validate individual components like scoring logic and configuration loading.
+*   **Smoke Tests:** Essential for verifying the end-to-end pipeline functionality with minimal data, ensuring the system runs without crashing.
+
+To run the tests:
+```bash
+poetry run pytest
+```
+
+---
+
+## 📊 Benchmarking & Calibration
+
+A formal benchmarking process has been established to measure the model's calibration and accuracy. Detailed results, methodology, and ongoing analysis are available in [BENCHMARKS.md](BENCHMARKS.md).
+
+**Key Finding:** The current model (v402 baseline) is **significantly over-confident**, meaning its predicted ranges of outcomes are too narrow, even though its average predictions (bias) are accurate. This highlights a need to introduce more simulated variance (e.g., injuries, big plays) into the core game engine.
 
 ---
 
@@ -75,7 +84,7 @@ Results will be saved to `projections/calibration_metrics_v{version}.csv`.
     *   `rushers.py` / `receivers.py`: KDE (Kernel Density Estimation) for yardage distributions.
 *   **`stats/`**: Feature Engineering. Calculates "Talent Estimators" (EWMA) for players and teams.
 *   **`evaluation/`**: Analysis tools.
-    *   `calibration.py`: Implementation of PIT and Reliability diagrams.
+    *   `calibration.py`: Implementation of PIT, Reliability diagrams, KS Test, and Bias calculation.
 
 ---
 
@@ -84,9 +93,9 @@ Results will be saved to `projections/calibration_metrics_v{version}.csv`.
 See [ROADMAP.md](ROADMAP.md) for the detailed feature backlog and future vision.
 
 Key Priorities:
-1.  **Accuracy:** Fix bias in calibration (currently under-predicting).
-2.  **Architecture:** Decouple scoring rules and control flow.
-3.  **Scale:** Enable massive historical backtesting.
+1.  **Configurable Scoring Rules:** Implement support for various fantasy scoring formats via configuration.
+2.  **Increase Simulation Variance:** Address the model's over-confidence by incorporating more realistic game variability (e.g., mid-game injuries, big play probabilities).
+3.  **Early Season Data Loading Fix:** Resolve issues preventing Week 1 data from being properly processed in backtests.
 
 ---
 
