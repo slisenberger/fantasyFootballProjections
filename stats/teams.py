@@ -9,11 +9,11 @@ def calculate(data, season):
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
     lvg_avg_int_rate = (
-        data.loc[data.interception].shape[0]
+        data.loc[data.interception == 1].shape[0]
         / data.loc[data.play_type.isin(["pass"])].shape[0]
     )
     lvg_avg_sack_rate = (
-        data.loc[data.sack].shape[0]
+        data.loc[data.sack == 1].shape[0]
         / data.loc[data.play_type.isin(["pass"])].shape[0]
     )
 
@@ -524,7 +524,7 @@ def compute_defense_ypc_estimator(data):
 
 def compute_defense_int_rate_estimator(data):
     int_prior = (
-        data.loc[data.interception].shape[0]
+        data.loc[data.interception == 1].shape[0]
         / data.loc[data.play_type.isin(["pass"])].shape[0]
     )
     int_span = 1000
@@ -552,7 +552,7 @@ def compute_defense_int_rate_estimator(data):
 
 def compute_defense_sack_rate_estimator(data):
     sack_prior = (
-        data.loc[data.sack].shape[0] / data.loc[data["pass"] == 1].shape[0]
+        data.loc[data.sack == 1].shape[0] / data.loc[data["pass"] == 1].shape[0]
     )
     sack_span = 1000
     data = data.loc[data["pass"] == 1]
@@ -579,7 +579,7 @@ def compute_defense_sack_rate_estimator(data):
 
 def compute_offense_sack_rate_estimator(data):
     sack_prior = (
-        data.loc[data.sack].shape[0] / data.loc[data["pass"] == 1].shape[0]
+        data.loc[data.sack == 1].shape[0] / data.loc[data["pass"] == 1].shape[0]
     )
     sack_span = 1000
     data = data.loc[data["pass"] == 1]

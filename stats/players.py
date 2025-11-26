@@ -214,7 +214,7 @@ def calculate(data, team_stats, season, week):
     scramble_rate_estimator = compute_scramble_rate_estimator(data)
     yards_per_scramble_estimator = compute_yards_per_scramble_estimator(data)
     kick_attempts = (
-        data.loc[data.field_goal_attempt]
+        data.loc[data.field_goal_attempt == 1]
         .groupby("kicker_player_id")
         .size()
         .to_frame(name="kick_attempts")
@@ -371,7 +371,7 @@ def compute_cpoe_estimator(data):
 
 def compute_scramble_rate_estimator(data):
     data = data.loc[data["pass"] == 1]
-    scramble_prior = data.loc[data.qb_scramble].shape[0] / data.shape[0]
+    scramble_prior = data.loc[data.qb_scramble == 1].shape[0] / data.shape[0]
     scramble_span = passer_span
     biased_scramble = (
         data.groupby(["passer_id"])["qb_scramble"]

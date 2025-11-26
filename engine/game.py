@@ -1,5 +1,6 @@
 import random
 from collections import defaultdict
+from enums import PlayType, Position
 
 
 # I think the API I want is something like: result = advance_snap(game_state)
@@ -39,15 +40,15 @@ class GameState:
         self.field_goal_model = models["field_goal_model"]
         self.playcall_model = models["playcall_model"]
         self.air_yards_models = {
-            "RB": models["air_yards_RB"],
-            "TE": models["air_yards_TE"],
-            "WR": models["air_yards_WR"],
+            Position.RB: models["air_yards_RB"],
+            Position.TE: models["air_yards_TE"],
+            Position.WR: models["air_yards_WR"],
             "ALL": models["air_yards_ALL"],
         }
         self.yac_models = {
-            "RB": models["yac_RB"],
-            "TE": models["yac_TE"],
-            "WR": models["yac_WR"],
+            Position.RB: models["yac_RB"],
+            Position.TE: models["yac_TE"],
+            Position.WR: models["yac_WR"],
             "ALL": models["yac_ALL"],
         }
         self.rush_model = models["rush_model"]
@@ -97,6 +98,7 @@ class GameState:
             return -1
         else:
             return -4
+
     def change_possession(self):
         if self.posteam == self.home_team:
             self.posteam = self.away_team
@@ -126,11 +128,11 @@ class GameState:
         sack = False
         interception = False
         scramble = False
-        if playcall == "run":
+        if playcall == PlayType.RUN:
             carrier = self.choose_carrier()
             carrier_id = carrier["player_id"].values[0]
             yards = self.compute_carry_yards(carrier)
-        if playcall == "pass":
+        if playcall == PlayType.PASS:
             qb = self.choose_quarterback()
             try:
                 qb_id = qb["player_id"].values[0]
@@ -174,11 +176,11 @@ class GameState:
                     yac = self.compute_yac(target)
                     yards = air_yards + yac
 
-        if playcall == "punt":
+        if playcall == PlayType.PUNT:
             self.punt()
             return
 
-        if playcall == "field_goal":
+        if playcall == PlayType.FIELD_GOAL:
             self.field_goal()
             return
 
@@ -236,7 +238,7 @@ class GameState:
                 self.yds_to_go -= yards
 
         # Count the fantasy points for this play.
-        if playcall == "run":
+        if playcall == PlayType.RUN:
             self.fantasy_points[carrier_id] += 0.1 * yards
             carrier["player_name"].values[0]
 
@@ -245,7 +247,7 @@ class GameState:
                 if self.extra_point():
                     # TODO: model this
                     self.fantasy_points[k_id] += 1
-        if (playcall == "pass") and (not sack) and (not scramble) and (is_complete):
+        if (playcall == PlayType.PASS) and (not sack) and (not scramble) and (is_complete):
             self.fantasy_points[qb_id] += 0.04 * yards
             target_fpts = 0.5
             target_fpts += 0.1 * yards
@@ -311,13 +313,13 @@ class GameState:
     # - Modeling timeouts and hurry-up situations
     # - Modeling spikes and kneels
     # - Modeling clock loss due to penalities
-    def advance_clock(self, playcall, sack, scramble, is_complete):
+    def advance_clock(self, playcall, sack, is_complete, scramble):
         original_sec_remaining = self.sec_remaining
-        if playcall == "pass" and not is_complete and not sack and not scramble:
+        if playcall == PlayType.PASS and not is_complete and not sack and not scramble:
             self.sec_remaining -= 5
-        elif playcall == "field_goal":
+        elif playcall == PlayType.FIELD_GOAL:
             self.sec_remaining -= 5
-        elif playcall == "punt":
+        elif playcall == PlayType.PUNT:
             self.sec_remaining -= 5
         else:
             clock_burn = 0
@@ -363,7 +365,7 @@ class GameState:
     def game_end(self):
         self.game_over = True
         print(
-            "%s %s - %s %s"
+            "%s %s - %s %s" 
             % (self.home_team, self.home_score, self.away_team, self.away_score)
         )
 
@@ -448,11 +450,8 @@ class GameState:
         # Normalize weights to sum to 1, and then continue mixing
         # in a uniform distribution until we are below our
         # maximum target share.
+        weights = [weight + 0.1 for weight in weights]
         weights = [weight / sum(weights) for weight in weights]
-
-        while max(weights) > max_tgt_share:
-            weights = [weight + 0.1 for weight in weights]
-            weights = [weight / sum(weights) for weight in weights]
         target = random.choices(
             eligible_targets["player_id"].tolist(), weights=weights, k=1
         )[0]
@@ -493,7 +492,7 @@ class GameState:
 
     def choose_quarterback(self):
         pos_player_stats = self.get_pos_player_stats()
-        eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == "QB"][
+        eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == Position.QB][
             [
                 "player_id",
                 "player_name",
@@ -512,7 +511,7 @@ class GameState:
 
     def choose_kicker(self):
         pos_player_stats = self.get_pos_player_stats()
-        eligible_ks = pos_player_stats.loc[pos_player_stats["position"] == "K"][
+        eligible_ks = pos_player_stats.loc[pos_player_stats["position"] == Position.K][
             ["player_id", "player_name", "kick_attempts", "starting_k"]
         ]
         starting_k = eligible_ks.loc[eligible_ks.starting_k == 1]
@@ -526,7 +525,7 @@ class GameState:
         pos = target["position"].values[0]
         # Use special position trained models at first, before adjusting.
 
-        if pos in ["WR", "RB", "TE"]:
+        if pos in [Position.WR, Position.RB, Position.TE]:
             base = self.air_yards_models[pos].sample(n_samples=1)[0][0]
         else:
             base = self.air_yards_models["ALL"].sample(n_samples=1)[0][0]
@@ -552,7 +551,7 @@ class GameState:
         yac = 0
         pos = target["position"].values[0]
         # Use special position trained models at first, before adjusting.
-        if pos in ["WR", "RB", "TE"]:
+        if pos in [Position.WR, Position.RB, Position.TE]:
             yac = self.yac_models[pos].sample(n_samples=1)[0][0]
         else:
             yac = self.yac_models["ALL"].sample(n_samples=1)[0][0]
