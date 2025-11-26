@@ -1,13 +1,17 @@
 from collections import defaultdict
 import pandas as pd
 from settings import ScoringSettings
+from types import SimpleNamespace # Add this import
 
 def score_from_play(play, rules: ScoringSettings):
     """
     Calculates fantasy points for a single play based on the provided ScoringSettings.
     Returns a dictionary mapping player_id -> points earned on this play.
     """
-    # A map of player ID to the score they receive on this play.
+    # Ensure play is an object with attribute access
+    if isinstance(play, pd.Series):
+        play = SimpleNamespace(**play.to_dict())
+
     scores_on_play = defaultdict(float)
     
     # --- Touchdowns ---
@@ -38,12 +42,12 @@ def score_from_play(play, rules: ScoringSettings):
     if play.rushing_yards:
         scores_on_play[play.rusher_player_id] += rules.rush_yard * play.rushing_yards
         
-    if play.kickoff_returner_player_id or play.punt_returner_id:
-        # Note: Return yardage scoring isn't in the config yet, defaulting to 0.04 if not specified
-        # But for now, let's assume it maps to a field or use hardcoded if missing.
-        # The previous code used 0.04. 
-        # Let's assume standard leagues don't score return yards, but we should add it to config later.
-        # For parity with previous code:
+    # Note: Return yardage scoring isn't in the config yet, defaulting to 0.04 if not specified
+    # But for now, let's assume it maps to a field or use hardcoded if missing.
+    # The previous code used 0.04. 
+    # Let's assume standard leagues don't score return yards, but we should add it to config later.
+    # For parity with previous code:
+    if play.kickoff_returner_player_id or play.punt_returner_player_id:
         return_id = (
             play.kickoff_returner_player_id
             if play.kickoff_returner_player_id
@@ -96,7 +100,6 @@ def score_from_play(play, rules: ScoringSettings):
         scores_on_play[play.defteam] += rules.def_safety
 
     return scores_on_play
-
 
 def points_from_score(score, rules: ScoringSettings):
     score = int(score)
