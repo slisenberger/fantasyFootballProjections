@@ -2,6 +2,7 @@ import random
 from collections import defaultdict
 from enums import PlayType, Position
 from settings import ScoringSettings
+import pandas as pd
 
 
 # I think the API I want is something like: result = advance_snap(game_state)
@@ -64,16 +65,66 @@ class GameState:
 
         self.game_over = False
 
-        # Set basic data
-        self.home_player_stats = home_player_stats
-        self.away_player_stats = away_player_stats
-        self.home_team_stats = home_team_stats
-        self.away_team_stats = away_team_stats
+        # --- OPTIMIZATION: Pre-cache stats to avoid Pandas overhead in loop ---
+        
+        # Convert Team Stats DF to Dict for O(1) lookup
+        # Expected format: { 'offense_pass_oe_est': val, ... }
+        # We assume home_team_stats and away_team_stats are single-row DFs
+        
+        def df_to_dict(df):
+            if df.empty: return {}
+            return df.iloc[0].to_dict()
 
-        if self.home_team_stats.empty:
-            print(f"CRITICAL: Home team stats empty for {home_team}")
-        if self.away_team_stats.empty:
-            print(f"CRITICAL: Away team stats empty for {away_team}")
+        self.home_team_stats_dict = df_to_dict(home_team_stats)
+        self.away_team_stats_dict = df_to_dict(away_team_stats)
+
+        # Pre-filter players by team and position
+        
+        def get_qbs(df):
+            qbs = df.loc[df["position"] == Position.QB]
+            # Sort logic from choose_quarterback
+            starting = qbs.loc[qbs.starting_qb == 1]
+            if len(starting) == 1:
+                return starting.to_dict('records')
+            return qbs.sort_values(by="pass_attempts", ascending=False).head(1).to_dict('records')
+
+        def get_kickers(df):
+            ks = df.loc[df["position"] == Position.K]
+            starting = ks.loc[ks.starting_k == 1]
+            if len(starting) == 1:
+                return starting.to_dict('records')
+            return ks.sort_values(by="kick_attempts", ascending=False).head(1).to_dict('records')
+
+        def get_carriers(df):
+            eligible = df.loc[df["carry_percentage"] > 0]
+            if eligible.empty: return [], []
+            # Return list of dicts and list of weights
+            records = eligible.to_dict('records')
+            weights = [p["carry_share_est"] for p in records]
+            return records, weights
+
+        def get_targets(df):
+            eligible = df.loc[df["target_percentage"] > 0]
+            if eligible.empty: return [], []
+            records = eligible.to_dict('records')
+            weights = [p["target_share_est"] for p in records]
+            # Normalize weights logic from choose_target
+            weights = [w + 0.1 for w in weights]
+            total = sum(weights)
+            weights = [w / total for w in weights]
+            return records, weights
+
+        self.home_qbs = get_qbs(home_player_stats)
+        self.away_qbs = get_qbs(away_player_stats)
+        
+        self.home_kickers = get_kickers(home_player_stats)
+        self.away_kickers = get_kickers(away_player_stats)
+        
+        self.home_carriers, self.home_carry_weights = get_carriers(home_player_stats)
+        self.away_carriers, self.away_carry_weights = get_carriers(away_player_stats)
+        
+        self.home_targets, self.home_target_weights = get_targets(home_player_stats)
+        self.away_targets, self.away_target_weights = get_targets(away_player_stats)
 
         self.fantasy_points = defaultdict(float)
 
@@ -140,31 +191,38 @@ class GameState:
         sack = False
         interception = False
         scramble = False
+        
+        # Get team stats dicts for current possession
+        pos_stats = self.get_pos_team_stats()
+        def_stats = self.get_def_team_stats()
+
         if playcall == PlayType.RUN:
             carrier = self.choose_carrier()
-            carrier_id = carrier["player_id"].values[0]
-            yards = self.compute_carry_yards(carrier)
+            if carrier:
+                carrier_id = carrier["player_id"]
+                yards = self.compute_carry_yards(carrier)
+            else:
+                yards = 0 # Should not happen if carriers exist
+                carrier_id = "Team" # Fallback
+
         if playcall == PlayType.PASS:
             qb = self.choose_quarterback()
-            try:
-                qb_id = qb["player_id"].values[0]
-            except IndexError:
+            if qb:
+                qb_id = qb["player_id"]
+            else:
                 qb_id = "QB_%s" % self.posteam
+            
             # Average the offensive and defensive sack rates.
-            offense_sack_rate = self.get_pos_team_stats()[
-                "offense_sack_rate_est"
-            ].values[0]
-            defense_sack_rate = self.get_def_team_stats()[
-                "defense_sack_rate_est"
-            ].values[0]
-            lg_sack_rate = self.get_pos_team_stats()["lg_sack_rate"].values[0]
+            offense_sack_rate = pos_stats.get("offense_sack_rate_est", 0.06)
+            defense_sack_rate = def_stats.get("defense_sack_rate_est", 0.06)
+            lg_sack_rate = pos_stats.get("lg_sack_rate", 0.06)
+            
             sack_rate = compute_odds_ratio(
                 offense_sack_rate, defense_sack_rate, lg_sack_rate
             )
 
-            defense_int_rate = self.get_def_team_stats()["defense_int_rate_est"].values[
-                0
-            ]
+            defense_int_rate = def_stats.get("defense_int_rate_est", 0.02)
+            
             if random.random() < sack_rate:
                 sack = True
                 yards = -7
@@ -178,15 +236,16 @@ class GameState:
                     interception = True
 
                 target = self.choose_target()
-                target_id = target["player_id"].values[0]
+                if target:
+                    target_id = target["player_id"]
+                    air_yards = self.compute_air_yards(target)
+                    is_complete = not interception and self.is_complete(air_yards, target)
 
-                air_yards = self.compute_air_yards(target)
-
-                is_complete = not interception and self.is_complete(air_yards, target)
-
-                if is_complete:
-                    yac = self.compute_yac(target)
-                    yards = air_yards + yac
+                    if is_complete:
+                        yac = self.compute_yac(target)
+                        yards = air_yards + yac
+                else:
+                    is_complete = False
 
         if playcall == PlayType.PUNT:
             self.punt()
@@ -197,9 +256,9 @@ class GameState:
             return
 
         k = self.choose_kicker()
-        try:
-            k_id = k["player_id"].values[0]
-        except IndexError:
+        if k:
+            k_id = k["player_id"]
+        else:
             k_id = "Kicker_%s" % self.posteam
 
         if interception:
@@ -249,19 +308,18 @@ class GameState:
                 self.yds_to_go -= yards
 
         # Count the fantasy points for this play.
-        if playcall == PlayType.RUN:
+        if playcall == PlayType.RUN and carrier:
             self.fantasy_points[carrier_id] += self.rules.rush_yard * yards
-            carrier["player_name"].values[0]
-
+            
             if td:
                 self.fantasy_points[carrier_id] += self.rules.rush_td
                 if self.extra_point():
                     self.fantasy_points[k_id] += self.rules.pat_made
-        if (playcall == PlayType.PASS) and (not sack) and (not scramble) and (is_complete):
+        if (playcall == PlayType.PASS) and (not sack) and (not scramble) and (is_complete) and target:
             self.fantasy_points[qb_id] += self.rules.pass_yard * yards
             target_fpts = self.rules.reception
             target_fpts += self.rules.rec_yard * yards
-            target["player_name"].values[0]
+            
             if td:
                 self.fantasy_points[qb_id] += self.rules.pass_td
                 target_fpts += self.rules.rec_td
@@ -418,12 +476,13 @@ class GameState:
         except ValueError:
             print("posteam: %s\ninput: %s" % (self.posteam, model_input))
         # Adjust probabilities for team trends
-        defense_pass_oe = (
-            self.get_def_team_stats()["defense_pass_oe_est"].values[0] / 100.0
-        )
-        offense_pass_oe = (
-            self.get_pos_team_stats()["offense_pass_oe_est"].values[0] / 100.0
-        )
+        
+        pos_stats = self.get_pos_team_stats()
+        def_stats = self.get_def_team_stats()
+        
+        defense_pass_oe = def_stats.get("defense_pass_oe_est", 0.0) / 100.0
+        offense_pass_oe = pos_stats.get("offense_pass_oe_est", 0.0) / 100.0
+
         base_probs[PASS_INDEX] += defense_pass_oe
         base_probs[PASS_INDEX] += offense_pass_oe
         base_probs[RUN_INDEX] -= defense_pass_oe
@@ -437,102 +496,60 @@ class GameState:
         return playcall
 
     def choose_target(self):
-        max_tgt_share = 0.5
-        pos_player_stats = self.get_pos_player_stats()
-        eligible_targets = pos_player_stats.loc[
-            pos_player_stats["target_percentage"] > 0
-        ][
-            [
-                "player_id",
-                "player_name",
-                "position",
-                "relative_air_yards_est",
-                "target_share_est",
-                "redzone_target_share_est",
-                "targets",
-                "relative_yac",
-                "relative_yac_est",
-                "receiver_cpoe_est",
-            ]
-        ]
-        weights = eligible_targets["target_share_est"].tolist()
-        eligible_targets["redzone_target_share_est"].tolist()
-        # Normalize weights to sum to 1, and then continue mixing
-        # in a uniform distribution until we are below our
-        # maximum target share.
-        weights = [weight + 0.1 for weight in weights]
-        weights = [weight / sum(weights) for weight in weights]
-        target = random.choices(
-            eligible_targets["player_id"].tolist(), weights=weights, k=1
-        )[0]
+        if self.posteam == self.home_team:
+            candidates = self.home_targets
+            weights = self.home_target_weights
+        else:
+            candidates = self.away_targets
+            weights = self.away_target_weights
+            
+        if not candidates:
+            return None
 
-        tgt = eligible_targets.loc[eligible_targets["player_id"] == target]
-        return tgt
+        target = random.choices(candidates, weights=weights, k=1)[0]
+        return target
 
     def is_scramble(self, qb):
-        try:
-            scramble_rate = qb["scramble_rate_est"].values[0]
-            return random.random() < scramble_rate
-        # If the qb doesn't have a rate, default to false.
-        except IndexError:
-            return False
+        if not qb: return False
+        scramble_rate = qb.get("scramble_rate_est", 0)
+        return random.random() < scramble_rate
 
     def choose_carrier(self):
-        pos_player_stats = self.get_pos_player_stats()
-        eligible_carriers = pos_player_stats.loc[
-            pos_player_stats["carry_percentage"] > 0
-        ][
-            [
-                "player_id",
-                "player_name",
-                "carry_share_est",
-                "redzone_carry_share_est",
-                "carries",
-                "relative_ypc",
-                "relative_ypc_est",
-            ]
-        ]
-        weights = eligible_carriers["carry_share_est"].tolist()
-        eligible_carriers["redzone_carry_share_est"].tolist()
-        # Use red zone data in producing target and carry estimations.
-        carrier = random.choices(
-            eligible_carriers["player_id"].tolist(), weights=weights, k=1
-        )[0]
-        return eligible_carriers.loc[eligible_carriers["player_id"] == carrier]
+        if self.posteam == self.home_team:
+            candidates = self.home_carriers
+            weights = self.home_carry_weights
+        else:
+            candidates = self.away_carriers
+            weights = self.away_carry_weights
+            
+        if not candidates:
+            return None
+
+        carrier = random.choices(candidates, weights=weights, k=1)[0]
+        return carrier
 
     def choose_quarterback(self):
-        pos_player_stats = self.get_pos_player_stats()
-        eligible_qbs = pos_player_stats.loc[pos_player_stats["position"] == Position.QB][
-            [
-                "player_id",
-                "player_name",
-                "cpoe_est",
-                "pass_attempts",
-                "scramble_rate_est",
-                "starting_qb",
-            ]
-        ]
-        starting_qb = eligible_qbs.loc[eligible_qbs.starting_qb == 1]
-        if starting_qb.shape[0] == 1:
-            qb = starting_qb
+        if self.posteam == self.home_team:
+            qbs = self.home_qbs
         else:
-            qb = eligible_qbs.sort_values(by="pass_attempts", ascending=False).head(1)
-        return qb
+            qbs = self.away_qbs
+            
+        if not qbs:
+            return None
+        return qbs[0] # Assuming we pre-filtered to 1 QB
 
     def choose_kicker(self):
-        pos_player_stats = self.get_pos_player_stats()
-        eligible_ks = pos_player_stats.loc[pos_player_stats["position"] == Position.K][
-            ["player_id", "player_name", "kick_attempts", "starting_k"]
-        ]
-        starting_k = eligible_ks.loc[eligible_ks.starting_k == 1]
-        if starting_k.shape[0] == 1:
-            k = starting_k
+        if self.posteam == self.home_team:
+            ks = self.home_kickers
         else:
-            k = eligible_ks.sort_values(by="kick_attempts", ascending=False).head(1)
-        return k
+            ks = self.away_kickers
+            
+        if not ks:
+            return None
+        return ks[0]
 
     def compute_air_yards(self, target):
-        pos = target["position"].values[0]
+        pos = target["position"]
         # Use special position trained models at first, before adjusting.
 
         if pos in [Position.WR, Position.RB, Position.TE]:
@@ -540,13 +557,13 @@ class GameState:
         else:
             base = self._get_sample(self.air_yards_samples["ALL"])
 
-        defense_relative_air_yards = self.get_def_team_stats()[
-            "defense_relative_air_yards"
-        ].values[0]
+        defense_relative_air_yards = self.get_def_team_stats().get(
+            "defense_relative_air_yards", 1.0
+        )
         # For routes that are clearly in positive territory, apply multiplies.
         if base >= 0:
             # Apply a multiplier to increase ADOT.
-            base *= target["relative_air_yards_est"].values[0]
+            base *= target.get("relative_air_yards_est", 1.0)
             # In red zone offense, stop applying team air yards multipliers.
             if self.yard_line >= 20:
                 base *= defense_relative_air_yards
@@ -559,17 +576,17 @@ class GameState:
 
     def compute_yac(self, target):
         yac = 0
-        pos = target["position"].values[0]
+        pos = target["position"]
         # Use special position trained models at first, before adjusting.
         if pos in [Position.WR, Position.RB, Position.TE]:
             yac = self._get_sample(self.yac_samples[pos])
         else:
             yac = self._get_sample(self.yac_samples["ALL"])
         # Come up with a way to handle small sample high yac players
-        relative_yac_est = target["relative_yac_est"].values[0]
-        defense_relative_yac = self.get_def_team_stats()[
-            "defense_relative_yac_est"
-        ].values[0]
+        relative_yac_est = target.get("relative_yac_est", 1.0)
+        defense_relative_yac = self.get_def_team_stats().get(
+            "defense_relative_yac_est", 1.0
+        )
         if yac > 0:
             yac *= defense_relative_yac
             yac *= relative_yac_est
@@ -579,10 +596,10 @@ class GameState:
         # Sample from pre-computed buffer
         yards = self._get_sample(self.rush_samples)
         
-        relative_ypc_est = carrier["relative_ypc_est"].values[0]
-        defense_relative_ypc = self.get_def_team_stats()[
-            "defense_relative_ypc_est"
-        ].values[0]
+        relative_ypc_est = carrier.get("relative_ypc_est", 1.0)
+        defense_relative_ypc = self.get_def_team_stats().get(
+            "defense_relative_ypc_est", 1.0
+        )
         yards *= defense_relative_ypc
         
         return yards
@@ -617,8 +634,8 @@ class GameState:
         if good:
             k = self.choose_kicker()
             try:
-                k_id = k["player_id"].values[0]
-            except IndexError:
+                k_id = k["player_id"]
+            except (IndexError, TypeError):
                 k_id = "Kicker_%s" % self.posteam
             if kicking_yards <= 39:
                 self.fantasy_points[k_id] += self.rules.fg_0_39
@@ -636,6 +653,9 @@ class GameState:
             self.turnover_on_downs()
 
     def get_pos_player_stats(self):
+        # This method might be deprecated if we use cached lists directly
+        # But keeping for safety if other methods use it.
+        # Ideally, we shouldn't call this in hot loops.
         if self.posteam == self.home_team:
             return self.home_player_stats
         else:
@@ -643,15 +663,15 @@ class GameState:
 
     def get_pos_team_stats(self):
         if self.posteam == self.home_team:
-            return self.home_team_stats
+            return self.home_team_stats_dict
         else:
-            return self.away_team_stats
+            return self.away_team_stats_dict
 
     def get_def_team_stats(self):
         if self.posteam == self.home_team:
-            return self.away_team_stats
+            return self.away_team_stats_dict
         else:
-            return self.home_team_stats
+            return self.home_team_stats_dict
 
     def is_complete(self, air_yards, target):
         COMPLETE_INDEX = 1
@@ -662,20 +682,18 @@ class GameState:
         base_probs = self.completion_model.predict_proba([model_input])[0]
 
         # Adjust probabilities for team trends
-        defense_cpoe = self.get_def_team_stats()["defense_cpoe_est"].values[0] / 100.0
+        defense_cpoe = self.get_def_team_stats().get("defense_cpoe_est", 0.0) / 100.0
         # base_probs[COMPLETE_INDEX] += defense_cpoe
         # base_probs[INCOMPLETE_INDEX] -= defense_cpoe
 
         # Adjust the completion probability for the active quarterback.
         qb = self.choose_quarterback()
-        try:
-            qb_cpoe = qb["cpoe_est"].values[0] / 100.0
-
-        # Certain situations currently lead to no QBs being rostered
-        except IndexError:
+        if qb:
+            qb_cpoe = qb.get("cpoe_est", 0.0) / 100.0
+        else:
             qb_cpoe = 0
 
-        target_cpoe = target["receiver_cpoe_est"].values[0] / 100.0
+        target_cpoe = target.get("receiver_cpoe_est", 0.0) / 100.0
         # TODO: Find a less arbitrary way of assigning credit to qb and receiver
         offense_cpoe = 0.75 * qb_cpoe + 0.25 * target_cpoe
         offense_comp = base_probs[COMPLETE_INDEX] + offense_cpoe

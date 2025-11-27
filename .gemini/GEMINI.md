@@ -4,7 +4,7 @@
 - **Domain:** Monte Carlo simulation of NFL games for fantasy projections.
 - **Stack:** Python 3.10+, Poetry, Pandas, Scikit-Learn, Joblib (Parallelism).
 - **Key Components:**
-    - `engine/game.py`: The core physics engine (God Class, refactoring in progress).
+    - `engine/game.py`: The core physics engine (God Class). Optimized for O(1) execution in hot loops.
     - `main.py`: Orchestrator with CLI subcommands (`project`, `backtest`).
     - `settings.py`: Pydantic configuration (Scoring, Runtime).
     - `evaluation/calibration.py`: Truth harness (PIT metrics).
@@ -17,8 +17,12 @@
     - **Data Integrity:** `NaN`s in simulation data are critical bugs, not valid zeros. Filter them before aggregation.
     - **Sanity Checks:** If a metric implies a broken reality (e.g., 27% coverage), assume a code bug first.
 - **Core Philosophies:**
-    - **Empiricism:** Avoid "magic numbers" or arbitrary coin flips (like fixed breakaway chances). Model behavior should be derived from measured data (KDEs, regressions). If the model is wrong, fix the data source or the statistical model, don't patch it with heuristics.
-    - **Speed as a Feature:** Simulation speed directly impacts iteration cycle time. Prioritize vectorization and batching (e.g., pre-sampling KDEs) over per-loop calculations. Slow benchmarks kill development velocity.
+    - **Empiricism:** Avoid "magic numbers". Model behavior should be derived from measured data (KDEs, regressions).
+    - **Speed as a Feature:** Simulation speed directly impacts iteration cycle time. 
+    - **Performance Optimization:**
+        - **Pandas is Poison (in loops):** Never access DataFrame values (e.g., `df.loc[x].values[0]`) inside a hot loop. It incurs a ~1000x overhead vs native Python types.
+        - **Pre-Computation:** Resolve all lookups, filters, and weights *before* the simulation loop starts.
+        - **Scikit-Learn Overhead:** `predict_proba` is optimized for batches, not single rows. For single-row prediction in loops, manual dot-products are faster (though harder to maintain).
 - **Documentation:** Always update relevant documentation (e.g., `README.md`, `BENCHMARKS.md`, `ROADMAP.md`) after delivering improvements or significant changes.
 - **Workflow:** Prioritize "Robustness" and "Correctness" over quick hacks. Always verify backtesting actually produces metrics.
 - **Coding Style:** Use Enums (`PlayType`, `Position`) instead of strings. Use Pydantic for config. Avoid magic numbers.
