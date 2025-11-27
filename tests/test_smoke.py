@@ -72,23 +72,25 @@ def test_project_week_smoke_test(
     assert not proj_df.empty # Should have some projection data
 
 def test_run_projections_smoke_test(
-    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models
+    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
 ):
     """
     Smoke test for the run_projections main entry point.
     Ensures it completes and attempts to write files.
     """
     config = mock_app_config_smoke
+    config.runtime.output_dir = str(tmp_path)
     
-    # Mock os.makedirs and pandas.DataFrame.to_csv to prevent actual file writing during test
-    with patch('os.makedirs'), \
-         patch('pandas.DataFrame.to_csv') as mock_to_csv:
-        
+    # We don't mock os.makedirs or to_csv anymore, let it write to tmp_path
+    # But we mock plot_predictions to avoid GUI
+    with patch('main.plot_predictions'): 
         run_projections(mock_pbp_data, config)
-        mock_to_csv.assert_called() # Verify that to_csv was called (i.e., files were "written")
+        
+    # Verify output exists
+    assert (tmp_path / f"v{config.runtime.version}" / "ros" / "ros_report.html").exists()
 
 def test_run_backtest_smoke_test(
-    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models
+    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
 ):
     """
     Smoke test for the run_backtest main entry point.
@@ -96,12 +98,12 @@ def test_run_backtest_smoke_test(
     """
     config = mock_app_config_smoke
     config.runtime.season = 2018 # Set to a backtest year
+    config.runtime.output_dir = str(tmp_path)
     
     # Mock calibration plot to prevent GUI popup
-    with patch('os.makedirs'), \
-         patch('pandas.DataFrame.to_csv') as mock_to_csv, \
-         patch('main.plot_predictions'), \
+    with patch('main.plot_predictions'), \
          patch('evaluation.calibration.plot_pit_histogram'):
 
         run_backtest(mock_pbp_data, config)
-        mock_to_csv.assert_called() # Verify that to_csv was called
+        # Check for metrics file
+        assert (tmp_path / f"v{config.runtime.version}" / "calibration" / "metrics.csv").exists()

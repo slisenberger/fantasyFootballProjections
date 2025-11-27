@@ -138,6 +138,10 @@ def project_week(data, models, season, week, config):
 
         df = pd.DataFrame(projections).transpose()
         all_projections.append(df)
+    
+    if not all_projections:
+        return pd.DataFrame()
+
     proj_df = pd.concat(all_projections)
 
     return proj_df
@@ -251,7 +255,7 @@ def plot_predictions(predictions):
     plt.show()
 
 
-def compute_stats_and_export(projection_data, season, week, version):
+def compute_stats_and_export(projection_data, season, week, version, output_dir="projections"):
     median = projection_data.median(axis=1)
     percentile_12 = projection_data.quantile(0.125, axis=1)
     percentile_25 = projection_data.quantile(0.25, axis=1)
@@ -281,7 +285,7 @@ def compute_stats_and_export(projection_data, season, week, version):
     ]
 
     # New Structured Output
-    base_dir = os.path.join("projections", f"v{version}", f"week_{week}")
+    base_dir = os.path.join(output_dir, f"v{version}", f"week_{week}")
     os.makedirs(base_dir, exist_ok=True)
 
     # Save Summary (was projections_week_X_vY.csv)
@@ -323,7 +327,7 @@ def project_ros(pbp_data, models, config):
             0
         )
         all_weeks.append(projection_data)
-        compute_stats_and_export(projection_data, season, week, version)
+        compute_stats_and_export(projection_data, season, week, version, config.runtime.output_dir)
 
     all_ros = pd.concat(all_weeks)
     roster_data = nfl_data_py.import_seasonal_rosters(
@@ -354,7 +358,7 @@ def project_ros(pbp_data, models, config):
     )
 
     # New Structured Output for ROS
-    base_dir = os.path.join("projections", f"v{version}", "ros")
+    base_dir = os.path.join(config.runtime.output_dir, f"v{version}", "ros")
     os.makedirs(base_dir, exist_ok=True)
 
     ros_sum.merge(roster_data, on="player_id", how="outer")[
@@ -474,7 +478,7 @@ def run_backtest(pbp_data, config):
             print(f"Could not generate plot: {e}")
         
         # New Structured Output for Calibration
-        base_dir = os.path.join("projections", f"v{config.runtime.version}", "calibration")
+        base_dir = os.path.join(config.runtime.output_dir, f"v{config.runtime.version}", "calibration")
         os.makedirs(base_dir, exist_ok=True)
         
         output_path = os.path.join(base_dir, "metrics.csv")

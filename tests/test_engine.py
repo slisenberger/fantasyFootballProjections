@@ -63,6 +63,6 @@ def test_game_state_play_game_basic(mock_models_for_game_state, mock_player_stat
     # by setting a very short quarter time or limiting plays
     game_state.sec_remaining = 1 # Force game_over quickly
 
-    fantasy_points = game_state.play_game()
+    fantasy_points, _ = game_state.play_game()
     assert isinstance(fantasy_points, dict)
     assert len(fantasy_points) > 0 # Should have at least defensive points

@@ -102,6 +102,7 @@ def mock_player_stats():
         'pass_attempts': [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0], # Corrected length
         'scramble_rate_est': [0.1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.0, 0.0], # Corrected length
         'yards_per_scramble_est': [5.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0], # Corrected length
+        'relative_yards_per_scramble_est': [1.0] * 16,
         'starting_qb': [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0], # Corrected length
         'kick_attempts': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
         'starting_k': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
@@ -142,6 +143,8 @@ def mock_models_for_game_state():
     
     mock_kde = MagicMock()
     mock_kde.sample.return_value = [[10]] # Default yardage
+    
+    mock_samples = [5.0] * 100
 
     mock_field_goal_model = MagicMock()
     mock_field_goal_model.classes_ = ['made', 'missed']
@@ -153,7 +156,8 @@ def mock_models_for_game_state():
     
     return {
         "playcall_model": mock_playcall_model,
-        "rush_model": mock_kde,
+        "rush_open_model": mock_kde,
+        "rush_rz_model": mock_kde,
         "scramble_model": mock_kde,
         "completion_model": mock_completion_model,
         "field_goal_model": mock_field_goal_model,
@@ -166,4 +170,22 @@ def mock_models_for_game_state():
         "yac_TE": mock_kde,
         "yac_WR": mock_kde,
         "yac_ALL": mock_kde,
+        
+        # Samples
+        "rush_open_samples": mock_samples,
+        "rush_rz_samples": mock_samples,
+        "scramble_samples": mock_samples,
+        "int_return_samples": mock_samples,
+        "air_yards_RB_samples": mock_samples,
+        "air_yards_TE_samples": mock_samples,
+        "air_yards_WR_samples": mock_samples,
+        "air_yards_ALL_samples": mock_samples,
+        "yac_RB_open_samples": mock_samples,
+        "yac_RB_rz_samples": mock_samples,
+        "yac_WR_open_samples": mock_samples,
+        "yac_WR_rz_samples": mock_samples,
+        "yac_TE_open_samples": mock_samples,
+        "yac_TE_rz_samples": mock_samples,
+        "yac_ALL_open_samples": mock_samples,
+        "yac_ALL_rz_samples": mock_samples,
     }
