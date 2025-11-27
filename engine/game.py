@@ -21,6 +21,7 @@ class GameState:
         home_team_stats,
         away_team_stats,
         rules: ScoringSettings,
+        trace=False
     ):
         # Names of the participating teams
         self.home_team = home_team
@@ -74,6 +75,10 @@ class GameState:
         self.in_overtime = False
         self.ot_possession_count = 0
         self.ot_first_drive_score = 0 # 0=None/Punt, 3=FG
+        
+        # Diagnostics
+        self.trace = trace
+        self.play_log = []
 
         # --- OPTIMIZATION: Pre-cache stats to avoid Pandas overhead in loop ---
         
@@ -158,7 +163,7 @@ class GameState:
         self.fantasy_points[self.away_team] += self.get_defense_score_points(
             self.home_score
         )
-        return self.fantasy_points
+        return self.fantasy_points, self.play_log
 
     def get_defense_score_points(self, score):
         if score == 0:
@@ -215,6 +220,8 @@ class GameState:
         sack = False
         interception = False
         scramble = False
+        carrier_id = None
+        target_id = None
         
         # Get team stats dicts for current possession
         pos_stats = self.get_pos_team_stats()
@@ -369,6 +376,23 @@ class GameState:
 
         if sack:
             self.fantasy_points[self.defteam()] += self.rules.def_sack
+
+        if self.trace:
+            pid = None
+            if playcall == PlayType.PASS and target_id: pid = target_id
+            if playcall == PlayType.RUN and carrier_id: pid = carrier_id
+            
+            self.play_log.append({
+                'qtr': self.quarter,
+                'time': self.sec_remaining,
+                'down': self.down,
+                'dist': self.yds_to_go,
+                'score_diff': self.score_differential(),
+                'play_type': playcall.name,
+                'yards': yards,
+                'is_complete': is_complete,
+                'player_id': pid
+            })
 
         self.advance_clock(playcall, sack, is_complete, scramble)
 
@@ -685,6 +709,8 @@ class GameState:
 
     def compute_scramble_yards(self, qb):
         yards = self._get_sample(self.scramble_samples)
+        multiplier = qb.get("relative_yards_per_scramble_est", 1.0)
+        yards *= multiplier
         return yards
 
     def punt(self):
