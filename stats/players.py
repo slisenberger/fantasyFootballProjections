@@ -325,10 +325,10 @@ def calculate(data, team_stats, season, week):
         / get_pos_rel_air_yards(row["position"]),
         axis=1,
     )
-    offense_stats["relative_air_yards_est"] = offense_stats.apply(
-        lambda row: row["air_yards_est"] / get_pos_rel_air_yards(row["position"]),
+    offense_stats["air_yards_oe_est"] = offense_stats.apply(
+        lambda row: row["air_yards_est"] - get_pos_rel_air_yards(row["position"]),
         axis=1,
-    ).fillna(1)
+    ).fillna(0)
     offense_stats["relative_yards_per_scramble_est"] = (
         offense_stats["yards_per_scramble_est"] / lg_avg_scramble_yards
     )
@@ -476,14 +476,28 @@ def compute_air_yards_estimator(data):
     priors_df = data[['receiver_player_id', 'position_receiver']].drop_duplicates('receiver_player_id')
     priors_df['air_yards'] = priors_df['position_receiver'].map(get_prior)
     
-    return _compute_estimator_vectorized(
+    # DEBUG
+    neg_air = data[data['air_yards'] < -10]
+    if not neg_air.empty:
+        print(f"DEBUG: Found {len(neg_air)} plays with air_yards < -10")
+        print(neg_air[['receiver_player_name', 'air_yards', 'season', 'week']].head())
+
+    res = _compute_estimator_vectorized(
         data, 
         'receiver_player_id', 
         'air_yards', 
         receiver_span, 
         priors_df, 
         'air_yards_est'
-    ).rename(columns={'receiver_player_id': 'player_id'})
+    )
+    
+    # DEBUG Result
+    neg_est = res[res['air_yards_est'] < -5]
+    if not neg_est.empty:
+        print(f"DEBUG: Found {len(neg_est)} players with air_yards_est < -5")
+        print(neg_est.head())
+
+    return res.rename(columns={'receiver_player_id': 'player_id'})
 
 
 def compute_ypc_estimator(data):

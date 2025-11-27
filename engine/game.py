@@ -703,13 +703,15 @@ class GameState:
         else:
             base = self._get_sample(self.air_yards_samples["ALL"])
 
+        orig_base = base
         defense_relative_air_yards = self.get_def_team_stats().get(
             "defense_relative_air_yards", 1.0
         )
         # For routes that are clearly in positive territory, apply multiplies.
         if base >= 0:
-            # Apply a multiplier to increase ADOT.
-            base *= target.get("relative_air_yards_est", 1.0)
+            # Apply additive shift for player skill
+            base += target.get("air_yards_oe_est", 0.0)
+            
             # In red zone offense, stop applying team air yards multipliers.
             if self.yard_line >= 20:
                 base *= defense_relative_air_yards
