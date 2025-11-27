@@ -16,18 +16,6 @@ wr_yac_model_name = "models/trained_models/yards_after_catch_kde_wr"
 te_yac_model_name = "models/trained_models/yards_after_catch_kde_te"
 
 
-def build_or_load_yac_kde(data=None):
-    try:
-        return joblib.load(yac_model_name)
-    except FileNotFoundError:
-        if data is None:
-            data = receiver_data()
-        all_yac = data["yards_after_catch"].dropna()
-        model = fit_kde(all_yac)
-        joblib.dump(model, yac_model_name)
-        return model
-
-
 def build_or_load_all_air_yards_kdes():
     data = receiver_data()
     return {

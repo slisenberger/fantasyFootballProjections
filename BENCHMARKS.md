@@ -25,7 +25,17 @@ To evaluate a model version, we look at three key indicators:
 
 ## 📜 Benchmark History
 
-### v410: Censored Boom Fix (Rushing) (Nov 26, 2025)
+### v412: Bimodal Receivers (Nov 26, 2025) - REVERTED
+**Change:** Attempted to apply the "Open vs RZ" split to Receiver KDEs (Air Yards, YAC).
+**Outcome:** **Regression.** `Fail High` increased from 25.9% to 26.8%. The split likely reduced sample size too much for the "Deep/Open" tails, making them less robust than the aggregate model.
+*   *Action:* Reverted to Global Receiver KDEs (v410 state).
+
+### v411: Tri-Zone Rushing (Nov 26, 2025) - REVERTED
+**Change:** Split Rushing KDEs into three zones (>50, 20-50, <=20).
+**Outcome:** **Regression.** `Fail High` increased to 27.2%. The middle zone (20-50) constrained runs more than the aggregate "Open" zone (>20).
+*   *Action:* Reverted to Bimodal Rushing (v410).
+
+### v410: Censored Boom Fix (Rushing) (Nov 26, 2025) - CURRENT GOLD STANDARD
 **Change:** Split Rushing KDEs into two zones: **Open Field** (yardline > 20) and **Red Zone** (yardline <= 20).
 *   *Theory:* Training on all runs suppresses "breakaway" potential because 5-yard TDs in the Red Zone look like 5-yard runs, polluting the distribution. By training Open Field KDEs only on unconstrained runs, we learn the true shape of "Boom" plays.
 **Outcome:** **Success.**
@@ -55,7 +65,7 @@ To evaluate a model version, we look at three key indicators:
 ## 🧠 Lessons Learned
 
 *   **Censoring Matters:** Field position acts as a hard clamp on yardage distributions. Splitting models by zone ("Contextual KDEs") is a viable path to fixing the "Fail High" rate.
-    *   *Next Step:* Apply this same logic to **Receiving Models** (Air Yards, YAC), which suffer from the same endzone constraints.
+*   **Sample Size vs Granularity:** Splitting Receivers (v412) failed where Rushing (v410) succeeded. Why? Receiving data is already sparse per-position (TE deep targets). Splitting it further starves the tails. Rushing data is denser and the physical constraint (wall of bodies) is starker.
 *   **Uncertainty is Key:** (v409 Finding) Modeling role uncertainty (injuries) is crucial.
 
 ---
@@ -64,5 +74,5 @@ To evaluate a model version, we look at three key indicators:
 
 ```bash
 # Run the full suite (approx 30 seconds)
-poetry run python benchmark.py --simulations 50 --version v411_candidate
+poetry run python benchmark.py --simulations 50 --version v413_candidate
 ```
