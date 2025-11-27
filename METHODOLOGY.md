@@ -43,6 +43,30 @@ We don't just use "Season Average." We use **Exponential Weighted Moving Average
 
 ---
 
+## 📐 The "Trilogy of Simulation" Philosophy
+
+The engine does not train a unique model for every player (insufficient data). Instead, it composes three layers to generate a result for every interaction:
+
+1.  **The Physics (Global KDE):**
+    *   *What:* A Kernel Density Estimation of *all* plays of that type (e.g., "All Rushing Plays", "All Deep Passes").
+    *   *Why:* Captures the fundamental shape, variance, and physical constraints of the sport (e.g., the probability of an 80-yard TD vs a 2-yard loss).
+    *   *Code:* `models['rush_open_samples']`, `models['scramble_samples']`.
+
+2.  **The Skill (Relative Estimator):**
+    *   *What:* A Bayesian-weighted estimator of a player's efficiency relative to the league average (e.g., "Lamar Jackson averages 1.5x the league yards per scramble").
+    *   *Why:* Shifts the Global KDE to match the specific talent of the player without losing the "Physics" of the distribution.
+    *   *Code:* `player_stats['relative_yards_per_scramble_est']`, `player_stats['relative_yac_est']`.
+
+3.  **The Matchup (Team Adjustment):**
+    *   *What:* An adjustment factor based on the opponent's defensive weakness (e.g., "The Broncos allow 1.2x yards per carry").
+    *   *Why:* Contextualizes the event to the specific game environment.
+    *   *Code:* `team_stats['defense_relative_ypc_est']`.
+
+**Formula:**
+`Result = Sample(Global_KDE) * Player_Skill * Matchup_Factor`
+
+*Note: This pattern explains why we use Global KDEs. We don't need a "Lamar Jackson KDE"; we need a "Scramble KDE" scaled by "Lamar's Efficiency".*
+
 ## 3. The Simulation Loop (The "Physics Engine")
 
 The heart of the system is `engine/game.py`. It functions like a text-based video game.
