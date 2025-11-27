@@ -1,10 +1,76 @@
 import pandas as pd
+from stats.util import _compute_estimator_vectorized
+
+
+# Helper functions to compute EWMA estimators for team stats.
+# These must be defined before `calculate` calls them.
+
+def compute_offense_poe_estimator(data):
+    poe_prior = 0
+    poe_span = 500
+    priors_df = data[['posteam']].drop_duplicates().copy()
+    priors_df['pass_oe'] = poe_prior
+    return _compute_estimator_vectorized(data, 'posteam', 'pass_oe', poe_span, priors_df, 'offense_pass_oe_est', time_col='week').rename(columns={'posteam': 'team'})
+
+def compute_defense_poe_estimator(data):
+    poe_prior = 0
+    poe_span = 500
+    priors_df = data[['defteam']].drop_duplicates().copy()
+    priors_df['pass_oe'] = poe_prior
+    return _compute_estimator_vectorized(data, 'defteam', 'pass_oe', poe_span, priors_df, 'defense_pass_oe_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_defense_cpoe_estimator(data):
+    cpoe_prior = 0
+    cpoe_span = 500
+    priors_df = data[['defteam']].drop_duplicates().copy()
+    priors_df['cpoe'] = cpoe_prior
+    return _compute_estimator_vectorized(data, 'defteam', 'cpoe', cpoe_span, priors_df, 'defense_cpoe_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_defense_yac_estimator(data):
+    yac_prior = data["yards_after_catch"].mean()
+    yac_span = 500
+    priors_df = data[['defteam']].drop_duplicates().copy()
+    priors_df['yards_after_catch'] = yac_prior
+    return _compute_estimator_vectorized(data, 'defteam', 'yards_after_catch', yac_span, priors_df, 'defense_yac_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_defense_ypc_estimator(data):
+    data_filtered = data.loc[data.rush == 1].copy()
+    ypc_prior = data_filtered["rushing_yards"].mean()
+    ypc_span = 500
+    priors_df = data_filtered[['defteam']].drop_duplicates().copy()
+    priors_df['rushing_yards'] = ypc_prior
+    return _compute_estimator_vectorized(data_filtered, 'defteam', 'rushing_yards', ypc_span, priors_df, 'defense_ypc_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_defense_int_rate_estimator(data):
+    pass_plays = data.loc[data["pass"] == 1].copy()
+    int_prior = (pass_plays.loc[pass_plays.interception == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
+    int_span = 1000
+    priors_df = pass_plays[['defteam']].drop_duplicates().copy()
+    priors_df['interception'] = int_prior
+    return _compute_estimator_vectorized(pass_plays, 'defteam', 'interception', int_span, priors_df, 'defense_int_rate_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_defense_sack_rate_estimator(data):
+    pass_plays = data.loc[data["pass"] == 1].copy()
+    sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
+    sack_span = 1000
+    priors_df = pass_plays[['defteam']].drop_duplicates().copy()
+    priors_df['sack'] = sack_prior
+    return _compute_estimator_vectorized(pass_plays, 'defteam', 'sack', sack_span, priors_df, 'defense_sack_rate_est', time_col='week').rename(columns={'defteam': 'team'})
+
+def compute_offense_sack_rate_estimator(data):
+    pass_plays = data.loc[data["pass"] == 1].copy()
+    sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
+    sack_span = 1000
+    priors_df = pass_plays[['posteam']].drop_duplicates().copy()
+    priors_df['sack'] = sack_prior
+    return _compute_estimator_vectorized(pass_plays, 'posteam', 'sack', sack_span, priors_df, 'offense_sack_rate_est', time_col='week').rename(columns={'posteam': 'team'})
 
 
 # Calculate team statistics that are used to determine tendencies.
 def calculate(data, season):
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run"]))]
-    data = data.loc[data.season == season]
+    data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
+
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
     lg_avg_yac = data["yards_after_catch"].mean()
     lg_avg_air_yards = data["air_yards"].mean()
@@ -143,7 +209,7 @@ def calculate(data, season):
     red_zone_carries = (
         data.loc[data.rush == 1]
         .loc[data.yardline_100 <= 10]
-        .groupby("posteam")["rusher_player_id"]
+        .groupby(["posteam", "week"])["rusher_player_id"]
         .count()
         .sort_values()
         .to_frame(name="red_zone_carries")
@@ -346,7 +412,8 @@ def calculate(data, season):
 
 
 def calculate_weekly(data, season):
-    data = data.loc[data.season == season]
+    data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
+    data = data.sort_values(['season', 'week'])
     targets_weekly = (
         data.groupby(["posteam", "week"])["receiver_player_id"]
         .count()
@@ -392,219 +459,3 @@ def calculate_weekly(data, season):
     if season <= 2019:
         weekly_data["team"] = weekly_data["team"].replace("LV", "OAK")
     return weekly_data
-
-
-def compute_offense_poe_estimator(data):
-    poe_prior = 0
-    # Use the last 1000 snap window
-    poe_span = 500
-    biased_poe = (
-        data.groupby(["posteam"])["pass_oe"]
-        .apply(lambda d: prepend(d, poe_prior))
-        .to_frame()
-    )
-    poe_est = (
-        biased_poe["pass_oe"]
-        .groupby(["posteam"])
-        .apply(lambda x: x.ewm(span=poe_span, adjust=False).mean())
-        .to_frame()
-    )
-    poe_est_now = (
-        poe_est.groupby("posteam")
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"posteam": "team", "pass_oe": "offense_pass_oe_est"})[
-            ["team", "offense_pass_oe_est"]
-        ]
-    )
-    print(poe_est_now)
-    print(poe_est_now.T.drop_duplicates().T)
-    return poe_est_now.T.drop_duplicates().T
-
-
-def compute_defense_poe_estimator(data):
-    poe_prior = 0
-    # Use the last 1000 snap window
-    poe_span = 500
-    biased_poe = (
-        data.groupby(["defteam"])["pass_oe"]
-        .apply(lambda d: prepend(d, poe_prior))
-        .to_frame()
-    )
-    poe_est = (
-        biased_poe.groupby(["defteam"])["pass_oe"]
-        .apply(lambda x: x.ewm(span=poe_span, adjust=False).mean())
-        .to_frame()
-    )
-    poe_est_now = (
-        poe_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "pass_oe": "defense_pass_oe_est"})[
-            ["team", "defense_pass_oe_est"]
-        ]
-    )
-    return poe_est_now.T.drop_duplicates().T
-
-
-def compute_defense_cpoe_estimator(data):
-    cpoe_prior = 0
-    # Use the last 500 pass window to judge completion.
-    cpoe_span = 500
-    biased_cpoe = (
-        data.groupby(["defteam"])["cpoe"]
-        .apply(lambda d: prepend(d, cpoe_prior))
-        .to_frame()
-    )
-    cpoe_est = (
-        biased_cpoe.groupby(["defteam"])["cpoe"]
-        .apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean())
-        .to_frame()
-    )
-    cpoe_est_now = (
-        cpoe_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "cpoe": "defense_cpoe_est"})[
-            ["team", "defense_cpoe_est"]
-        ]
-    )
-    return cpoe_est_now.T.drop_duplicates().T
-
-
-def compute_defense_yac_estimator(data):
-    yac_prior = data["yards_after_catch"].mean()
-    yac_span = 500
-    biased_yac = (
-        data.groupby(["defteam"])["yards_after_catch"]
-        .apply(lambda d: prepend(d, yac_prior))
-        .to_frame()
-    )
-    yac_est = (
-        biased_yac.groupby(["defteam"])["yards_after_catch"]
-        .apply(lambda x: x.ewm(span=yac_span, adjust=False).mean())
-        .to_frame()
-    )
-    yac_est_now = (
-        yac_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "yards_after_catch": "defense_yac_est"})[
-            ["team", "defense_yac_est"]
-        ]
-    )
-    return yac_est_now.T.drop_duplicates().T
-
-
-def compute_defense_ypc_estimator(data):
-    data = data.loc[data.rush == 1]
-    ypc_prior = data["rushing_yards"].mean()
-    ypc_span = 500
-    biased_ypc = (
-        data.groupby(["defteam"])["rushing_yards"]
-        .apply(lambda d: prepend(d, ypc_prior))
-        .to_frame()
-    )
-    ypc_est = (
-        biased_ypc.groupby(["defteam"])["rushing_yards"]
-        .apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean())
-        .to_frame()
-    )
-    ypc_est_now = (
-        ypc_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "rushing_yards": "defense_ypc_est"})[
-            ["team", "defense_ypc_est"]
-        ]
-    )
-    return ypc_est_now.T.drop_duplicates().T
-
-
-def compute_defense_int_rate_estimator(data):
-    int_prior = (
-        data.loc[data.interception == 1].shape[0]
-        / data.loc[data.play_type.isin(["pass"])].shape[0]
-    )
-    int_span = 1000
-    data = data.loc[data["pass"] == 1]
-    biased_int = (
-        data.groupby(["defteam"])["interception"]
-        .apply(lambda d: prepend(d, int_prior))
-        .to_frame()
-    )
-    int_est = (
-        biased_int.groupby(["defteam"])["interception"]
-        .apply(lambda x: x.ewm(span=int_span, adjust=False).mean())
-        .to_frame()
-    )
-    int_est_now = (
-        int_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "interception": "defense_int_rate_est"})[
-            ["team", "defense_int_rate_est"]
-        ]
-    )
-    return int_est_now.T.drop_duplicates().T
-
-
-def compute_defense_sack_rate_estimator(data):
-    sack_prior = (
-        data.loc[data.sack == 1].shape[0] / data.loc[data["pass"] == 1].shape[0]
-    )
-    sack_span = 1000
-    data = data.loc[data["pass"] == 1]
-    biased_sack = (
-        data.groupby(["defteam"])["sack"]
-        .apply(lambda d: prepend(d, sack_prior))
-        .to_frame()
-    )
-    sack_est = (
-        biased_sack.groupby(["defteam"])["sack"]
-        .apply(lambda x: x.ewm(span=sack_span, adjust=False).mean())
-        .to_frame()
-    )
-    sack_est_now = (
-        sack_est.groupby(["defteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"defteam": "team", "sack": "defense_sack_rate_est"})[
-            ["team", "defense_sack_rate_est"]
-        ]
-    )
-    return sack_est_now.T.drop_duplicates().T
-
-
-def compute_offense_sack_rate_estimator(data):
-    sack_prior = (
-        data.loc[data.sack == 1].shape[0] / data.loc[data["pass"] == 1].shape[0]
-    )
-    sack_span = 1000
-    data = data.loc[data["pass"] == 1]
-    biased_sack = (
-        data.groupby(["posteam"])["sack"]
-        .apply(lambda d: prepend(d, sack_prior))
-        .to_frame()
-    )
-    sack_est = (
-        biased_sack.groupby(["posteam"])["sack"]
-        .apply(lambda x: x.ewm(span=sack_span, adjust=False).mean())
-        .to_frame()
-    )
-    sack_est_now = (
-        sack_est.groupby(["posteam"])
-        .tail(1)
-        .reset_index(allow_duplicates=True)
-        .rename(columns={"posteam": "team", "sack": "offense_sack_rate_est"})[
-            ["team", "offense_sack_rate_est"]
-        ]
-    )
-    return sack_est_now.T.drop_duplicates().T
-
-
-def prepend(df, val):
-    df.loc[-1] = val
-    df.index = df.index + 1
-    df = df.sort_index()
-    return df

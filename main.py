@@ -4,6 +4,7 @@ import warnings
 import os
 import datetime
 from collections import defaultdict
+from sklearn.exceptions import InconsistentVersionWarning # Import for specific warning suppression
 
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -21,6 +22,7 @@ from models import int_return, kicking, completion, playcall, receivers, rushers
 from evaluation import calibration
 from reporting import html_generator
 from settings import AppConfig
+from settings import AppConfig, BENCHMARK_SUITE # Import BENCHMARK_SUITE
 
 
 def calculate_fantasy_leaders(pbp_data, season, week, config):
@@ -434,11 +436,8 @@ def run_backtest(pbp_data, config):
     print("\n--- Starting Backtesting & Calibration ---")
     calibration_results = []
 
-    # Configurable backtest range (hardcoded for smoke test)
-    # In a real run, this would loop over [2018, 2019...] and weeks [1..17]
-    backtest_config = [(2018, 8)] 
-
-    for season, week in backtest_config:
+    # Use BENCHMARK_SUITE from benchmark.py
+    for season, week in BENCHMARK_SUITE:
         try:
             print(f"Backtesting {season} Week {week}...")
             
@@ -520,6 +519,10 @@ if __name__ == "__main__":
     command = args.command or "all"
 
     warnings.filterwarnings("ignore", category=FutureWarning)
+    warnings.filterwarnings("ignore", category=UserWarning, module="sklearn") # Suppress sklearn specific UserWarnings
+    warnings.filterwarnings("ignore", category=DeprecationWarning) # Suppress numpy deprecation warnings
+    warnings.filterwarnings("ignore", category=InconsistentVersionWarning) # Suppress sklearn InconsistentVersionWarning
+    
     pd.set_option("display.max_rows", 100)
     pd.set_option("display.max_columns", 400)
     
@@ -530,9 +533,10 @@ if __name__ == "__main__":
         years_to_load.add(config.runtime.season - 1)
         
     if command in ["backtest", "all"]:
-        # Hardcoded backtest year for now
-        years_to_load.add(2018) 
-        years_to_load.add(2017)
+        # Add years from BENCHMARK_SUITE and one year prior for EWMA calculation
+        for season_year, _ in BENCHMARK_SUITE:
+            years_to_load.add(season_year)
+            years_to_load.add(season_year - 1)
 
     print(f"Loading data for years: {sorted(list(years_to_load))}")
     loader.clean_and_save_data(list(years_to_load))

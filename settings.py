@@ -88,3 +88,13 @@ class AppConfig(BaseModel):
         scoring = ScoringSettings(**scoring_config)
         
         return cls(scoring=scoring)
+
+# Define the Benchmark Suite
+BENCHMARK_SUITE = [
+    (2023, 1),
+    (2023, 8),
+    (2023, 17),
+    (2022, 1),
+    (2022, 8),
+    (2022, 17),
+]

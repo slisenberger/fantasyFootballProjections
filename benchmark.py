@@ -8,16 +8,7 @@ from main import get_models
 from data import loader
 from stats import injuries
 from evaluation import calibration
-
-# Define the Benchmark Suite
-BENCHMARK_SUITE = [
-    (2023, 1),
-    (2023, 8),
-    (2023, 17),
-    (2022, 1),
-    (2022, 8),
-    (2022, 17),
-]
+from settings import AppConfig, BENCHMARK_SUITE # Import BENCHMARK_SUITE
 
 # Define Season Segments
 SEGMENTS = {

@@ -6,7 +6,7 @@ from collections import defaultdict
 from stats import injuries, teams
 
 # Calculate statistics about players
-from stats.util import prepend
+from stats.util import _compute_estimator_vectorized # Added _compute_estimator_vectorized
 
 # Use previous 1000 passes to judge passers
 passer_span = 1000
@@ -17,10 +17,17 @@ rusher_span = 150
 
 
 def calculate(data, team_stats, season, week):
+    data = data.copy() # Ensure data is a copy to prevent SettingWithCopyWarning
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
+    data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
+
+    # Load roster data for current season (only needed for player metadata)
     roster_data = nfl_data_py.import_seasonal_rosters(
         [season], columns=["player_id", "position", "player_name", "team"]
     ).drop_duplicates(subset="player_id")
+
+    depth_charts = nfl_data_py.import_depth_charts([season])
+
     depth_charts = nfl_data_py.import_depth_charts([season])
     
     if "week" in depth_charts.columns:
@@ -408,6 +415,7 @@ def compute_big_carry_rate_estimator(data):
 
 
 def compute_deep_target_rate_estimator(data):
+    data = data.copy()
     data.loc[data.air_yards >= 30, "deep_target"] = 1
     data["deep_target"].fillna(0, inplace=True)
     deep_target_prior = 0
@@ -457,44 +465,7 @@ def compute_receiver_cpoe_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, result_col_name, time_col='week'):
-    """
-    Vectorized calculation of EWMA with prior seeding.
-    Ensures data is sorted by time before calculation.
-    """
-    # 1. Prepare Priors
-    priors_df = priors_df[[group_col, target_col]].copy()
-    priors_df[time_col] = -1 # Ensure priors come before week 1
-    
-    # 2. Prepare Main Data
-    # Ensure time_col exists in data
-    if time_col not in data.columns:
-        # Fallback or Error? 
-        # If data is PBP, it usually has week.
-        raise ValueError(f"Column '{time_col}' missing from data for sorting.")
-
-    main_df = data[[group_col, target_col, time_col]].copy()
-    
-    # 3. Concat
-    combined = pd.concat([priors_df, main_df], ignore_index=True)
-    
-    # Filter out NaN groups (groupby drops them, causing length mismatch otherwise)
-    combined = combined.dropna(subset=[group_col])
-    
-    # 4. Sort (Stable) to ensure Prior comes first, then time order preserved
-    combined = combined.sort_values(by=[group_col, time_col], ascending=True, kind='mergesort')
-    
-    # 5. EWM
-    # Note: groupby().ewm() returns a MultiIndex series (group, index)
-    est = combined.groupby(group_col)[target_col].ewm(span=span, adjust=False).mean()
-    
-    # 6. Align results
-    # We assign values back. Since 'est' preserves order of 'combined', we can just assign .values
-    combined[result_col_name] = est.values
-    
-    # 7. Extract latest estimate (tail 1)
-    result = combined.groupby(group_col).tail(1)[[group_col, result_col_name]]
-    return result
+# _compute_estimator_vectorized moved to stats/util.py
 
 
 def compute_air_yards_estimator(data):
@@ -591,7 +562,7 @@ def compute_yac_estimator(data):
 
 def calculate_weekly(data, weekly_team_stats, season):
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
-    data = data.loc[data.season == season]
+    data = data.sort_values(['season', 'week']) # Ensure data is sorted for multi-year EWMA calculation
     all_players = build_player_id_map(data)
     build_player_team_map(data)
     weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
@@ -685,6 +656,12 @@ def calculate_weekly(data, weekly_team_stats, season):
     weekly_stats = weekly_stats.merge(
         weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"]
     )
+    # Fill NaNs from outer merge with 0 before percentages.
+    weekly_stats["targets_wk_team"] = weekly_stats["targets_wk_team"].fillna(0)
+    weekly_stats["carries_wk_team"] = weekly_stats["carries_wk_team"].fillna(0)
+    weekly_stats["redzone_targets_wk_team"] = weekly_stats["redzone_targets_wk_team"].fillna(0)
+    weekly_stats["redzone_carries_wk_team"] = weekly_stats["redzone_carries_wk_team"].fillna(0)
+
 
     weekly_stats["target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row), axis=1
@@ -692,6 +669,11 @@ def calculate_weekly(data, weekly_team_stats, season):
     weekly_stats["carry_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_carry_percentage(row), axis=1
     )
+    # Fill NaNs from outer merge with 0 before percentages.
+    weekly_stats["targets_wk_team"] = weekly_stats["targets_wk_team"].fillna(0)
+    weekly_stats["carries_wk_team"] = weekly_stats["carries_wk_team"].fillna(0)
+    weekly_stats["redzone_targets_wk_team"] = weekly_stats["redzone_targets_wk_team"].fillna(0)
+    weekly_stats["redzone_carries_wk_team"] = weekly_stats["redzone_carries_wk_team"].fillna(0)
     weekly_stats["redzone_target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row, True), axis=1
     )
@@ -782,21 +764,65 @@ def weekly_redzone_target_share_estimator(weekly_data):
 
 
 def weekly_carry_share_estimator(weekly_data):
+
+
     # Assume rookies part of a committee of 4 backs
+
+
     carry_prior = 0
+
+
     # Temporarily shorten span for early season.
+
+
     carry_span = 17
+
+
     
+
+
     priors_df = weekly_data[['player_id']].drop_duplicates()
+
+
     priors_df['carry_percentage_wk'] = carry_prior
+
+
     
+
+
+    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` has NaNs: {weekly_data['carry_percentage_wk'].isna().any()}")
+
+
+    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` sum: {weekly_data['carry_percentage_wk'].sum()}")
+
+
+    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` head: \n{weekly_data['carry_percentage_wk'].head()}")
+
+
+    
+
+
     return _compute_estimator_vectorized(
+
+
         weekly_data, 
+
+
         'player_id', 
+
+
         'carry_percentage_wk', 
+
+
         carry_span, 
+
+
         priors_df, 
+
+
         'carry_share_est'
+
+
     )
 
 

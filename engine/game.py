@@ -1,3 +1,4 @@
+import pandas as pd
 import random
 from collections import defaultdict
 from enums import PlayType, Position
@@ -220,6 +221,7 @@ class GameState:
         sack = False
         interception = False
         scramble = False
+        fumble = False
         carrier_id = None
         target_id = None
         
@@ -235,6 +237,10 @@ class GameState:
             else:
                 yards = 0 # Should not happen if carriers exist
                 carrier_id = "Team" # Fallback
+            
+            # Fumble Logic (Run) - ~0.8% chance
+            if random.random() < 0.008:
+                fumble = True
 
         if playcall == PlayType.PASS:
             qb = self.choose_quarterback()
@@ -257,6 +263,9 @@ class GameState:
             if random.random() < sack_rate:
                 sack = True
                 yards = -7
+                # Fumble Logic (Sack) - ~0.8% chance
+                if random.random() < 0.008:
+                    fumble = True
 
             scramble = not sack and self.is_scramble(qb)
             if scramble:
@@ -310,7 +319,7 @@ class GameState:
 
             if self.yard_line <= 0:
                 self.touchdown()
-                self.fantasy_points[self.posteam] += 6
+                self.fantasy_points[self.posteam] += self.rules.def_td
                 td = True
                 # Have to do this here because elsewise the kickoff doesn't happen.
                 if self.extra_point():
@@ -318,6 +327,17 @@ class GameState:
 
             else:
                 self.first_down()
+        
+        # Handle Fumble (Turnover)
+        elif fumble:
+            self.yard_line -= yards
+            self.change_possession()
+            
+            if self.in_overtime and self.ot_possession_count == 2 and self.ot_first_drive_score == 3:
+                self.game_over = True
+
+            self.yard_line = 100 - self.yard_line
+            self.first_down()
 
         # If more yards were gained than remaining yards, touchdown.
         elif yards > self.yard_line:
@@ -376,6 +396,26 @@ class GameState:
 
         if sack:
             self.fantasy_points[self.defteam()] += self.rules.def_sack
+            self.fantasy_points[qb_id] += self.rules.sack
+
+        if fumble:
+            # Identify fumbler
+            if playcall == PlayType.RUN and carrier_id:
+                fumbler_id = carrier_id
+            elif playcall == PlayType.PASS:
+                fumbler_id = qb_id
+            else:
+                fumbler_id = None # Should be handled if needed, but generic flow covers run/pass
+
+            if fumbler_id:
+                self.fantasy_points[fumbler_id] += self.rules.fumble_lost
+            
+            # Award defense points (defteam here refers to the team ON DEFENSE when fumble occurred? 
+            # NO. change_possession was called.
+            # self.posteam is now the RECOVERING team (Old Defense).
+            # self.defteam() is now the FUMBLING team (Old Offense).
+            # So we want to award points to self.posteam.
+            self.fantasy_points[self.posteam] += self.rules.def_fumble_rec
 
         if self.trace:
             pid = None
@@ -581,12 +621,18 @@ class GameState:
         base_probs[RUN_INDEX] -= defense_pass_oe
         base_probs[RUN_INDEX] -= offense_pass_oe
 
-        playcall = random.choices(
+        playcall_str = random.choices(
             self.playcall_model.classes_,
             weights=base_probs,
             k=1
         )[0]
-        return playcall
+        
+        if playcall_str == "pass": return PlayType.PASS
+        if playcall_str == "run": return PlayType.RUN
+        if playcall_str == "punt": return PlayType.PUNT
+        if playcall_str == "field_goal": return PlayType.FIELD_GOAL
+        
+        return PlayType.RUN
 
     def choose_target(self):
         if self.posteam == self.home_team:
@@ -618,6 +664,13 @@ class GameState:
         if not candidates:
             return None
 
+        # If all weights are zero, use equal weights to prevent ValueError
+        # Replace NaN weights with 0 before summing
+        weights = [0.0 if pd.isna(w) else w for w in weights]
+
+        if sum(weights) == 0:
+            weights = [1.0 for _ in weights]
+            
         carrier = random.choices(candidates, weights=weights, k=1)[0]
         return carrier
 
