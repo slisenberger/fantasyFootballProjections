@@ -25,48 +25,39 @@ To evaluate a model version, we look at three key indicators:
 
 ## 📜 Benchmark History
 
-### v412: Bimodal Receivers (Nov 26, 2025) - REVERTED
-**Change:** Attempted to apply the "Open vs RZ" split to Receiver KDEs (Air Yards, YAC).
-**Outcome:** **Regression.** `Fail High` increased from 25.9% to 26.8%. The split likely reduced sample size too much for the "Deep/Open" tails, making them less robust than the aggregate model.
-*   *Action:* Reverted to Global Receiver KDEs (v410 state).
+### v418: Aggressive YAC (Open Field Global) (Nov 26, 2025) - CURRENT GOLD STANDARD
+**Change:** Trained YAC models *only* on Open Field data (>20 yards), but applied them *globally* (even in Red Zone).
+*   *Theory:* A player's ability to break tackles (YAC) is best measured in the open field. In the Red Zone, we should sample from their "Open Field Potential" and let the engine mechanically cap the yards at the goal line. Using a "Red Zone" model double-penalizes them (statistical shortness + mechanical cap).
+**Outcome:** **The Winner.**
+*   **Fail High:** 25.8% (Matches best).
+*   **RMSE:** 14.88 (Solid).
+*   **Coverage:** 65.4% (Best yet).
 
-### v411: Tri-Zone Rushing (Nov 26, 2025) - REVERTED
-**Change:** Split Rushing KDEs into three zones (>50, 20-50, <=20).
-**Outcome:** **Regression.** `Fail High` increased to 27.2%. The middle zone (20-50) constrained runs more than the aggregate "Open" zone (>20).
-*   *Action:* Reverted to Bimodal Rushing (v410).
-
-### v410: Censored Boom Fix (Rushing) (Nov 26, 2025) - CURRENT GOLD STANDARD
-**Change:** Split Rushing KDEs into two zones: **Open Field** (yardline > 20) and **Red Zone** (yardline <= 20).
-*   *Theory:* Training on all runs suppresses "breakaway" potential because 5-yard TDs in the Red Zone look like 5-yard runs, polluting the distribution. By training Open Field KDEs only on unconstrained runs, we learn the true shape of "Boom" plays.
-**Outcome:** **Success.**
-*   **Fail High:** Dropped to **25.9%** (Lowest yet).
-*   **Bias:** Improved to **+0.06**.
-*   **Trade-off:** Slight increase in "Fail Low" (9.3%), possibly due to tighter Red Zone distributions creating more goal-line stands.
-
-| Metric | Value | Delta (v409) | Interpretation |
+| Metric | Value | Delta (v417) | Interpretation |
 | :--- | :--- | :--- | :--- |
-| **RMSE** | **15.02** | -0.01 | Neutral. |
-| **Bias** | **+0.06** | -0.01 | ✅ Improvement. |
-| **Coverage (90%)** | **64.9%** | +0.2% | ✅ Improvement. |
-| **Fail High** | **25.9%** | -0.9% | ✅ Unlocked more long runs. |
-| **Fail Low** | **9.3%** | +0.8% | ⚠️ More busts. |
+| **RMSE** | **14.88** | +0.17 | Acceptable trade-off. |
+| **Bias** | **+0.08** | +0.01 | Neutral. |
+| **Coverage (90%)** | **65.4%** | +0.3% | ✅ Best yet. |
+| **Fail High** | **25.8%** | -0.5% | ✅ Unlocked boom plays. |
+| **Fail Low** | **8.8%** | +0.2% | Stable. |
 
-### v409: Probabilistic Injury Injection (Nov 26, 2025)
-**Change:** Added stochastic simulation for "Questionable" (Q) players.
-**Outcome:** **Significant Improvement.**
-*   **Fail High:** 26.8%
-*   **Coverage:** 64.7%
+### v417: Split YAC (Nov 26, 2025)
+**Change:** Split YAC into Open/RZ (using RZ model for RZ plays).
+**Outcome:** Good RMSE (14.71) but slightly worse Ceiling (26.3%). The RZ model likely suppressed "breakaway TD" potential.
 
-### v408: Empirical Clock Management (Nov 26, 2025)
-**Outcome:** Neutral. Better physics, same calibration.
+### v410: Censored Boom Fix (Rushing) (Nov 26, 2025)
+**Change:** Split Rushing KDEs into Open/RZ.
+**Outcome:** Big win for Ceiling (25.9%).
 
 ---
 
 ## 🧠 Lessons Learned
 
-*   **Censoring Matters:** Field position acts as a hard clamp on yardage distributions. Splitting models by zone ("Contextual KDEs") is a viable path to fixing the "Fail High" rate.
-*   **Sample Size vs Granularity:** Splitting Receivers (v412) failed where Rushing (v410) succeeded. Why? Receiving data is already sparse per-position (TE deep targets). Splitting it further starves the tails. Rushing data is denser and the physical constraint (wall of bodies) is starker.
-*   **Uncertainty is Key:** (v409 Finding) Modeling role uncertainty (injuries) is crucial.
+*   **Censoring Matters:** Field position acts as a hard clamp on yardage distributions.
+*   **Mechanical vs Statistical Constraints:**
+    *   For **Rushing**, the RZ is a different physical environment (wall of bodies). Splitting models (Open vs RZ) works best.
+    *   For **Receiving (YAC)**, the RZ constraint is primarily the endzone itself. Using an "Open Field" model globally and letting the engine cap the yards works best.
+*   **Uncertainty is Key:** Modeling role uncertainty (injuries) is crucial.
 
 ---
 
@@ -74,5 +65,5 @@ To evaluate a model version, we look at three key indicators:
 
 ```bash
 # Run the full suite (approx 30 seconds)
-poetry run python benchmark.py --simulations 50 --version v413_candidate
+poetry run python benchmark.py --simulations 50 --version v419_candidate
 ```

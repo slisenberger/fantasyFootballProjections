@@ -53,12 +53,14 @@ class GameState:
             "ALL": models["air_yards_ALL_samples"],
         }
         
-        self.yac_samples = {
-            Position.RB: models["yac_RB_samples"],
-            Position.TE: models["yac_TE_samples"],
-            Position.WR: models["yac_WR_samples"],
-            "ALL": models["yac_ALL_samples"],
-        }
+        self.yac_samples = {}
+        for pos in [Position.RB, Position.TE, Position.WR, "ALL"]:
+            p_key = pos 
+            str_key = pos if pos == "ALL" else pos.name
+            self.yac_samples[p_key] = {
+                "open": models[f"yac_{str_key}_open_samples"],
+                "rz": models[f"yac_{str_key}_rz_samples"]
+            }
         
         self.rush_open_samples = models["rush_open_samples"]
         self.rush_rz_samples = models["rush_rz_samples"]
@@ -642,13 +644,14 @@ class GameState:
         return base
 
     def compute_yac(self, target):
-        yac = 0
         pos = target["position"]
-        # Use special position trained models at first, before adjusting.
-        if pos in [Position.WR, Position.RB, Position.TE]:
-            yac = self._get_sample(self.yac_samples[pos])
-        else:
-            yac = self._get_sample(self.yac_samples["ALL"])
+        if pos not in [Position.WR, Position.RB, Position.TE]:
+            pos = "ALL"
+            
+        # Experiment: Use Open Field YAC for ALL situations to un-censor potential.
+        # We rely on the engine's mechanical cap (yard_line) to handle the Red Zone constraint.
+        yac = self._get_sample(self.yac_samples[pos]["open"])
+        
         # Come up with a way to handle small sample high yac players
         relative_yac_est = target.get("relative_yac_est", 1.0)
         defense_relative_yac = self.get_def_team_stats().get(

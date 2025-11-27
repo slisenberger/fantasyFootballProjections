@@ -6,107 +6,18 @@ import pandas as pd
 import numpy as np
 import joblib
 
-yac_model_name = "models/trained_models/yards_after_catch_kde"
+# Global Model Paths
 air_yards_model_name = "models/trained_models/air_yards_kde"
 rb_air_yards_model_name = "models/trained_models/air_yards_kde_rb"
 wr_air_yards_model_name = "models/trained_models/air_yards_kde_wr"
 te_air_yards_model_name = "models/trained_models/air_yards_kde_te"
-rb_yac_model_name = "models/trained_models/yards_after_catch_kde_rb"
-wr_yac_model_name = "models/trained_models/yards_after_catch_kde_wr"
-te_yac_model_name = "models/trained_models/yards_after_catch_kde_te"
 
-
-def build_or_load_all_air_yards_kdes():
-    data = receiver_data()
-    return {
-        "air_yards_RB": build_or_load_rb_air_yards_kde(data),
-        "air_yards_WR": build_or_load_wr_air_yards_kde(data),
-        "air_yards_TE": build_or_load_te_air_yards_kde(data),
-        "air_yards_ALL": build_or_load_air_yards_kde(data),
-    }
-
-
-def build_or_load_all_yac_kdes():
-    data = receiver_data()
-    return {
-        "yac_RB": build_or_load_rb_yac_kde(data),
-        "yac_WR": build_or_load_wr_yac_kde(data),
-        "yac_TE": build_or_load_te_yac_kde(data),
-        "yac_ALL": build_or_load_yac_kde(data),
-    }
-
-
-def build_or_load_air_yards_kde(data=None):
-    try:
-        return joblib.load(air_yards_model_name)
-    except FileNotFoundError:
-        if data is None:
-            data = receiver_data()
-        all_air_yards = data["air_yards"].dropna()
-        model = fit_kde(all_air_yards)
-        joblib.dump(model, air_yards_model_name)
-        return model
-
-
-def build_or_load_rb_air_yards_kde(data):
-    try:
-        return joblib.load(rb_air_yards_model_name)
-    except FileNotFoundError:
-        all_air_yards = data.loc[data.position == "RB"]["air_yards"].dropna()
-        model = fit_kde(all_air_yards)
-        joblib.dump(model, rb_air_yards_model_name)
-        return model
-
-
-def build_or_load_wr_air_yards_kde(data):
-    try:
-        return joblib.load(wr_air_yards_model_name)
-    except FileNotFoundError:
-        all_air_yards = data.loc[data.position == "WR"]["air_yards"].dropna()
-        model = fit_kde(all_air_yards)
-        joblib.dump(model, wr_air_yards_model_name)
-        return model
-
-
-def build_or_load_te_air_yards_kde(data):
-    try:
-        return joblib.load(te_air_yards_model_name)
-    except FileNotFoundError:
-        all_air_yards = data.loc[data.position == "TE"]["air_yards"].dropna()
-        model = fit_kde(all_air_yards)
-        joblib.dump(model, te_air_yards_model_name)
-        return model
-
-
-def build_or_load_rb_yac_kde(data):
-    try:
-        return joblib.load(rb_yac_model_name)
-    except FileNotFoundError:
-        all_yac = data.loc[data.position == "RB"]["yards_after_catch"].dropna()
-        model = fit_kde(all_yac)
-        joblib.dump(model, rb_yac_model_name)
-        return model
-
-
-def build_or_load_wr_yac_kde(data):
-    try:
-        return joblib.load(wr_yac_model_name)
-    except FileNotFoundError:
-        all_yac = data.loc[data.position == "WR"]["yards_after_catch"].dropna()
-        model = fit_kde(all_yac)
-        joblib.dump(model, wr_yac_model_name)
-        return model
-
-
-def build_or_load_te_yac_kde(data):
-    try:
-        return joblib.load(te_yac_model_name)
-    except FileNotFoundError:
-        all_yac = data.loc[data.position == "TE"]["yards_after_catch"].dropna()
-        model = fit_kde(all_yac)
-        joblib.dump(model, te_yac_model_name)
-        return model
-
+def fit_kde(data):
+    array_like = data.values.reshape(-1, 1)
+    params = {"bandwidth": np.logspace(-1, 1, 20)}
+    grid = GridSearchCV(KernelDensity(), params)
+    kde = grid.fit(array_like).best_estimator_
+    return kde
 
 def receiver_data():
     YEARS = [2019, 2020, 2021, 2022, 2023]
@@ -115,45 +26,83 @@ def receiver_data():
         i_data = pd.read_csv(
             "data/pbp_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
         )
-
-        # Reduce the size of the datasets to make the join easier.
+        # Include yardline_100 for zone splitting
         i_data = i_data.loc[~i_data.receiver_player_id.isnull()][
-            ["receiver_player_id", "air_yards", "yards_after_catch"]
+            ["receiver_player_id", "air_yards", "yards_after_catch", "yardline_100"]
         ]
         data = pd.concat([data, i_data], sort=True)
     data = data.rename(columns={"receiver_player_id": "player_id"})
     roster_data = nfl_data_py.import_seasonal_rosters(
-        [2017, 2018, 2019, 2020, 2021], columns=["player_id", "position", "player_name"]
+        YEARS, columns=["player_id", "position", "player_name"]
     ).drop_duplicates()
     data = data.merge(roster_data, on="player_id", how="left")
     return data
 
+# --- Air Yards (Global) ---
+def build_or_load_all_air_yards_kdes():
+    data = receiver_data()
+    return {
+        "air_yards_RB": build_or_load_pos_kde(data, "air_yards", "RB", rb_air_yards_model_name),
+        "air_yards_WR": build_or_load_pos_kde(data, "air_yards", "WR", wr_air_yards_model_name),
+        "air_yards_TE": build_or_load_pos_kde(data, "air_yards", "TE", te_air_yards_model_name),
+        "air_yards_ALL": build_or_load_pos_kde(data, "air_yards", "ALL", air_yards_model_name),
+    }
 
-def fit_kde(data):
-    array_like = data.values.reshape(-1, 1)
-    params = {"bandwidth": np.logspace(-1, 1, 20)}
-    grid = GridSearchCV(KernelDensity(), params)
-    kde = grid.fit(array_like).best_estimator_
-    x = np.linspace(data.min(), data.max(), 100)
-    log_dens = kde.score_samples(x.reshape(-1, 1))
+def build_or_load_pos_kde(data, col, pos, path):
+    try:
+        return joblib.load(path)
+    except FileNotFoundError:
+        if pos != "ALL":
+            values = data.loc[data.position == pos][col].dropna()
+        else:
+            values = data[col].dropna()
+        
+        if len(values) < 20:
+             values = data[col].dropna() # Fallback to ALL
+             
+        model = fit_kde(values)
+        joblib.dump(model, path)
+        return model
 
-    # Plot it all
-    fig, ax = plt.subplots(1, 1)
+# --- YAC (Split Open/RZ) ---
+def build_or_load_all_yac_kdes():
+    data = receiver_data()
+    models = {}
+    for pos in ["RB", "WR", "TE", "ALL"]:
+        for zone in ["open", "rz"]:
+            name_pos = "" if pos == "ALL" else f"_{pos.lower()}"
+            path = f"models/trained_models/yards_after_catch_kde{name_pos}_{zone}"
+            key = f"yac_{pos}_{zone}"
+            models[key] = _build_zone_kde(path, data, "yards_after_catch", pos, zone)
+    return models
 
-    ax.plot(x, np.exp(log_dens))
-    ax2 = ax.twinx()
-    ax2.hist(array_like, color="yellow", bins=50)
+def _build_zone_kde(model_path, data, col, pos, zone):
+    try:
+        return joblib.load(model_path)
+    except FileNotFoundError:
+        # Filter Position
+        if pos and pos != "ALL":
+            subset = data.loc[data.position == pos]
+        else:
+            subset = data
+            
+        # Filter Zone
+        if zone == "open":
+            subset = subset.loc[subset.yardline_100 > 20]
+        elif zone == "rz":
+            subset = subset.loc[subset.yardline_100 <= 20]
+            
+        values = subset[col].dropna()
+        
+        if len(values) < 20:
+            print(f"Warning: Low sample size for {model_path}: {len(values)}. Using Global.")
+            values = data[col].dropna() 
+             
+        model = fit_kde(values)
+        joblib.dump(model, model_path)
+        return model
 
-    synthetic = kde.sample(n_samples=1000)
-    ax3 = ax2.twinx()
-    ax3.hist(synthetic, color="blue", bins=50)
-    plt.show()
-    return kde
-
-
-def plot_kde_samples(kde):
-    # Plot it all
-    fig, ax = plt.subplots(1, 1)
-    synthetic = kde.sample(n_samples=1000)
-    ax.hist(synthetic, color="blue", bins=50)
-    plt.show()
+# Legacy functions if called directly (Maintains API compatibility)
+def build_or_load_air_yards_kde(data=None):
+    if data is None: data = receiver_data()
+    return build_or_load_pos_kde(data, "air_yards", "ALL", air_yards_model_name)
