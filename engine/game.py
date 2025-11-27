@@ -116,9 +116,13 @@ class GameState:
             if eligible.empty: return [], []
             records = eligible.to_dict('records')
             weights = [p["target_share_est"] for p in records]
-            # Normalize weights logic from choose_target
-            weights = [w + 0.1 for w in weights]
+            
             total = sum(weights)
+            if total == 0:
+                # Fallback if all estimates are 0
+                weights = [1.0 for _ in weights]
+                total = len(weights)
+                
             weights = [w / total for w in weights]
             return records, weights
 
