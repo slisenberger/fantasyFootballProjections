@@ -25,21 +25,21 @@ To evaluate a model version, we look at three key indicators:
 
 ## 📜 Benchmark History
 
-### v406: Data Pipeline Optimization (Nov 26, 2025)
-**Change:** Vectorized `build_player_id_map` and all 12 statistical estimators in `stats/players.py`. Removed `groupby().apply(prepend)` bottleneck.
-**Outcome:** **18x Speedup** in data preparation (70s -> 4s). Combined with v405, the entire pipeline is now hyper-optimized.
-
-### v405: The "Surgical Strike" Optimization (Nov 26, 2025)
-**Change:** Removed Pandas overhead from the hot simulation loop (`advance_snap`). Implemented pre-filtering of player lists and dictionary-based stat lookups in `GameState.__init__`.
-**Outcome:** **Massive speedup.** Simulation core logic is ~9x faster. End-to-end runtime improved by ~3x.
+### v406: Verification & Full Optimization (Nov 26, 2025)
+**Change:** Full vectorization of `stats/players.py` combined with "De-Pandas" engine optimization.
+**Outcome:** **7.5x End-to-End Speedup** (12s/week vs 90s/week). Metrics confirmed stable against baseline.
 
 | Metric | Value | Delta (v402) | Interpretation |
 | :--- | :--- | :--- | :--- |
-| **RMSE** | **15.15** | -0.03 | Stable. |
-| **Bias** | **+0.08** | 0.00 | Stable. |
-| **Coverage (90%)** | **65.6%** | -0.2% | Stable. |
-| **Fail High** | **26.8%** | -0.3% | Stable. |
-| **Speed** | **~30s** | -60s | **3x Faster** simulation; Data prep is now **18x faster**. |
+| **RMSE** | **15.43** | +0.25 | Stable (within variance). |
+| **Bias** | **+0.09** | +0.01 | Stable. |
+| **Coverage (90%)** | **64.7%** | -1.1% | Stable. |
+| **Fail High** | **28.3%** | +1.2% | Stable. |
+| **Speed** | **~12s** | **-78s** | **7.5x Faster** 🚀 |
+
+### v405: The "Surgical Strike" Optimization (Nov 26, 2025)
+**Change:** Removed Pandas overhead from the hot simulation loop (`advance_snap`).
+**Outcome:** **Massive speedup.** Simulation core logic is ~9x faster.
 
 ### v402: Baseline (Nov 26, 2025)
 **Suite:** Weeks 8 & 17 of 2022-2023.
@@ -59,8 +59,8 @@ To evaluate a model version, we look at three key indicators:
 ## 🏃 How to Run Benchmarks
 
 ```bash
-# Run the full suite (approx 2-3 mins)
-poetry run python benchmark.py --simulations 50 --version v406_candidate
+# Run the full suite (approx 30 seconds)
+poetry run python benchmark.py --simulations 50 --version v407_candidate
 ```
 
-This will save results to `benchmarks/results_v406_candidate.json` and a detailed CSV.
+This will save results to `benchmarks/results_v407_candidate.json` and a detailed CSV.
