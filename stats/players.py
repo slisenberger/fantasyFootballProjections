@@ -20,7 +20,7 @@ def calculate(data, team_stats, season, week):
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     roster_data = nfl_data_py.import_seasonal_rosters(
         [season], columns=["player_id", "position", "player_name", "team"]
-    )
+    ).drop_duplicates(subset="player_id")
     depth_charts = nfl_data_py.import_depth_charts([season])
     
     if "week" in depth_charts.columns:
@@ -336,6 +336,7 @@ def calculate(data, team_stats, season, week):
     # Filter only to players that are playing this season.
     all_player_ids = roster_data["player_id"].to_list()
     offense_stats = offense_stats.loc[offense_stats.player_id.isin(all_player_ids)]
+    offense_stats = offense_stats.drop_duplicates(subset="player_id")
     offense_stats.to_csv("offense_stats.csv")
     return offense_stats
 
@@ -456,17 +457,23 @@ def compute_receiver_cpoe_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, result_col_name):
+def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, result_col_name, time_col='week'):
     """
     Vectorized calculation of EWMA with prior seeding.
+    Ensures data is sorted by time before calculation.
     """
     # 1. Prepare Priors
     priors_df = priors_df[[group_col, target_col]].copy()
-    priors_df['_sort_key'] = 0
+    priors_df[time_col] = -1 # Ensure priors come before week 1
     
     # 2. Prepare Main Data
-    main_df = data[[group_col, target_col]].copy()
-    main_df['_sort_key'] = 1
+    # Ensure time_col exists in data
+    if time_col not in data.columns:
+        # Fallback or Error? 
+        # If data is PBP, it usually has week.
+        raise ValueError(f"Column '{time_col}' missing from data for sorting.")
+
+    main_df = data[[group_col, target_col, time_col]].copy()
     
     # 3. Concat
     combined = pd.concat([priors_df, main_df], ignore_index=True)
@@ -475,7 +482,7 @@ def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, 
     combined = combined.dropna(subset=[group_col])
     
     # 4. Sort (Stable) to ensure Prior comes first, then time order preserved
-    combined = combined.sort_values(by=[group_col, '_sort_key'], kind='mergesort')
+    combined = combined.sort_values(by=[group_col, time_col], ascending=True, kind='mergesort')
     
     # 5. EWM
     # Note: groupby().ewm() returns a MultiIndex series (group, index)
