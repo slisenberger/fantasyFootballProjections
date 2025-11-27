@@ -89,7 +89,7 @@ def project_week(data, models, season, week, config):
     player_stats = player_stats[
         [
             "player_id", "player_name", "position", "team", "status", "exp_return",
-            "air_yards_oe_est", "target_share_est", "redzone_target_share_est",
+            "relative_air_yards_est", "target_share_est", "redzone_target_share_est",
             "target_percentage", "targets", "relative_yac", "relative_yac_est",
             "receiver_cpoe_est", "carry_share_est", "redzone_carry_share_est",
             "carry_percentage", "carries", "relative_ypc", "relative_ypc_est",
@@ -108,7 +108,7 @@ def project_week(data, models, season, week, config):
         ]
     ]
     player_stats["relative_yac_est"].fillna(1, inplace=True)
-    player_stats["air_yards_oe_est"].fillna(0, inplace=True)
+    player_stats["relative_air_yards_est"].fillna(1, inplace=True)
     player_stats["relative_yards_per_scramble_est"].fillna(1, inplace=True)
     for i, row in schedules.iterrows():
         gameday_time = datetime.datetime.fromordinal(

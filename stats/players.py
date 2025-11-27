@@ -325,10 +325,11 @@ def calculate(data, team_stats, season, week):
         / get_pos_rel_air_yards(row["position"]),
         axis=1,
     )
-    offense_stats["air_yards_oe_est"] = offense_stats.apply(
-        lambda row: row["air_yards_est"] - get_pos_rel_air_yards(row["position"]),
+    AIR_YARDS_SHIFT = 15.0
+    offense_stats["relative_air_yards_est"] = offense_stats.apply(
+        lambda row: (row["air_yards_est"] + AIR_YARDS_SHIFT) / (get_pos_rel_air_yards(row["position"]) + AIR_YARDS_SHIFT),
         axis=1,
-    ).fillna(0)
+    ).fillna(1.0)
     offense_stats["relative_yards_per_scramble_est"] = (
         offense_stats["yards_per_scramble_est"] / lg_avg_scramble_yards
     )

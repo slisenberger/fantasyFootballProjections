@@ -707,10 +707,15 @@ class GameState:
         defense_relative_air_yards = self.get_def_team_stats().get(
             "defense_relative_air_yards", 1.0
         )
-        # For routes that are clearly in positive territory, apply multiplies.
-        if base >= 0:
-            # Apply additive shift for player skill
-            base += target.get("air_yards_oe_est", 0.0)
+        
+        AIR_YARDS_SHIFT = 15.0
+        # Shifted Multiplicative Scaling
+        # Allows RBs with negative avg air yards to be scaled correctly relative to a negative baseline,
+        # without flipping positive samples into massive negatives.
+        
+        if (base + AIR_YARDS_SHIFT) > 0:
+            player_multiplier = target.get("relative_air_yards_est", 1.0)
+            base = ((base + AIR_YARDS_SHIFT) * player_multiplier) - AIR_YARDS_SHIFT
             
             # In red zone offense, stop applying team air yards multipliers.
             if self.yard_line >= 20:
