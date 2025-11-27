@@ -46,8 +46,12 @@ def get_season_injury_data(season):
         print("Injury data not available before 2016")
         return None
 
-    df = nfl_data_py.import_injuries([season])
-    return df
+    try:
+        df = nfl_data_py.import_injuries([season])
+        return df
+    except Exception as e:
+        print(f"Warning: Could not import injuries for {season}: {e}")
+        return pd.DataFrame()
 
 
 def clean_and_save_data(years=[]):
@@ -56,9 +60,10 @@ def clean_and_save_data(years=[]):
         years = [2024]
     for year in years:
         inj_data = get_season_injury_data(year)
-        inj_data.to_csv(
-            "data/inj_" + str(year) + ".csv.gz", index=False, compression="gzip"
-        )
+        if inj_data is not None and not inj_data.empty:
+            inj_data.to_csv(
+                "data/inj_" + str(year) + ".csv.gz", index=False, compression="gzip"
+            )
 
 
 def load_historical_data(years):
@@ -67,11 +72,15 @@ def load_historical_data(years):
         if i in cached_data:
             i_data = cached_data[i]
         else:
-            i_data = pd.read_csv(
-                "data/inj_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
-            )
-            # Prevent future reads of this data from going to disk.
-            cached_data[i] = i_data
+            try:
+                i_data = pd.read_csv(
+                    "data/inj_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
+                )
+                # Prevent future reads of this data from going to disk.
+                cached_data[i] = i_data
+            except FileNotFoundError:
+                print(f"Warning: Injury file for {i} not found. Assuming no injuries.")
+                i_data = pd.DataFrame()
 
         data = pd.concat([data, i_data], sort=True)
 

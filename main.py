@@ -19,6 +19,7 @@ from stats import players, teams, injuries
 from data import loader
 from models import int_return, kicking, completion, playcall, receivers, rushers
 from evaluation import calibration
+from reporting import html_generator
 from settings import AppConfig
 
 
@@ -288,6 +289,9 @@ def compute_stats_and_export(projection_data, season, week, version):
         os.path.join(base_dir, "flex.csv")
     )
     projection_data.loc[projection_data.position == "K"].to_csv(os.path.join(base_dir, "k.csv"))
+    
+    # Generate HTML Report
+    html_generator.generate_html_report(week, season, base_dir)
 
 
 def project_ros(pbp_data, models, config):

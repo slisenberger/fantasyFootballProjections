@@ -22,7 +22,16 @@ def calculate(data, team_stats, season, week):
         [season], columns=["player_id", "position", "player_name", "team"]
     )
     depth_charts = nfl_data_py.import_depth_charts([season])
-    depth_charts = depth_charts.loc[depth_charts.week == week]
+    
+    if "week" in depth_charts.columns:
+        depth_charts = depth_charts.loc[depth_charts.week == week]
+    else:
+        # Handle Live Data Format (Missing week, different column names)
+        depth_charts = depth_charts.rename(columns={
+            "pos_rank": "depth_team",
+            "pos_abb": "position" 
+        })
+
     qb1s = depth_charts.loc[
         (depth_charts.position == "QB") & (depth_charts.depth_team == 1)
     ].rename(columns={"gsis_id": "player_id", "depth_team": "starting_qb"})[
@@ -714,7 +723,12 @@ def compute_carry_percentage(row, redzone=False):
 
 def get_weekly_injuries(season):
     not_injured = ["Questionable"]
-    all_injuries = injuries.load_historical_data([season]).dropna()
+    all_injuries = injuries.load_historical_data([season])
+    
+    if all_injuries.empty:
+        return pd.DataFrame(columns=["week", "player_id", "available"])
+
+    all_injuries = all_injuries.dropna()
     all_injuries = all_injuries.loc[~all_injuries["report_status"].isin(not_injured)]
     all_injuries = all_injuries.assign(available=False).rename(
         columns={"gsis_id": "player_id"}
