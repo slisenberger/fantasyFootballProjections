@@ -32,7 +32,9 @@ def calculate_fantasy_leaders(pbp_data, season, week, config):
         play_score = score.score_from_play(data.iloc[i], config.scoring)
         if play_score is not None:
             for key in play_score.keys():
-                scores[key] += play_score[key]
+                val = play_score[key]
+                if pd.notna(key) and pd.notna(val):
+                    scores[key] += val
 
     games = data.groupby("game_id").tail(1)[
         ["game_id", "away_team", "home_team", "total_away_score", "total_home_score"]
@@ -173,9 +175,11 @@ def project_game(models, player_stats, team_stats, home, away, week, config):
         away_player_stats,
         home_team_stats,
         away_team_stats,
-        rules=config.scoring
+        rules=config.scoring,
+        trace=False
     )
-    return game_machine.play_game()
+    scores, _ = game_machine.play_game()
+    return scores
 
 
 def score_predictions(predictions):
@@ -403,15 +407,16 @@ def get_models():
     
     # Receiver Models (Air Yards & YAC)
     for pos in ["RB", "WR", "TE", "ALL"]:
-        # Air Yards
+        # Air Yards (Global)
         key_ay = f"air_yards_{pos}"
         if key_ay in models:
             models[f"{key_ay}_samples"] = models[key_ay].sample(SAMPLE_SIZE).flatten()
         
-        # YAC
-        key_yac = f"yac_{pos}"
-        if key_yac in models:
-            models[f"{key_yac}_samples"] = models[key_yac].sample(SAMPLE_SIZE).flatten()
+        # YAC (Split)
+        for zone in ["open", "rz"]:
+            key_yac = f"yac_{pos}_{zone}"
+            if key_yac in models:
+                models[f"{key_yac}_samples"] = models[key_yac].sample(SAMPLE_SIZE).flatten()
 
     return models
 

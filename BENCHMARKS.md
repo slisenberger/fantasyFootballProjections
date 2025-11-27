@@ -1,69 +1,31 @@
-# 📊 Benchmarking & Calibration
+# Benchmarks
 
-This document establishes the "Gold Standard" for evaluating the Fantasy Football Projections Engine. We use a standardized backtesting suite to measure the model's accuracy and reliability.
+## Summary of Progress
 
-## 🏆 Gold Standard Metrics
+| Version | Date | Description | RMSE | Bias | Coverage 90% | Fail High |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Baseline** | 2025-11-25 | Initial v402 | 14.04 | +0.05 | 45.8% | 32.6% |
+| **v419 Fixed** | 2025-11-26 | Audit + Fix (n=1305) | **11.85** | **+0.06** | **70.6%** | **21.6%** |
 
-To evaluate a model version, we look at three key indicators:
+*Note: Fail High Target is 10%. Ideally 5-10%.*
 
-1.  **Calibration (KS Test & PIT Uniformity):**
-    *   *Goal:* A uniform distribution of Probability Integral Transform (PIT) values.
-    *   *Metric:* **KS Statistic** (lower is better, target < 0.05).
-    *   *Meaning:* Are our probability buckets accurate? (e.g., Does a 30% probability event happen 30% of the time?)
+## Calibration by Position (v419 Fixed)
 
-2.  **Interval Coverage (Reliability):**
-    *   *Goal:* Our X% confidence intervals should capture the actual score X% of the time.
-    *   *Metric:* **Coverage 90%** (target = 0.90).
-    *   *Meaning:* Are we capturing the true range of outcomes, or are we over/under-confident?
+| Position | RMSE | Bias | Fail High | Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **QB** | 8.03 | +0.16 | **30.5%** | 🔴 Under-Projected Upside. Needs Scramble/TD work. |
+| **RB** | 6.99 | +0.02 | **11.1%** | 🟢 **Perfect Calibration.** |
+| **WR** | 7.60 | +0.02 | 13.2% | 🟡 Good. Slightly conservative. |
+| **TE** | 5.82 | +0.04 | 16.0% | 🟡 Okay. High variance. |
+| **K** | 4.94 | -0.20 | 2.0% | 🔵 Over-Projected. Needs FGOE. |
 
-3.  **Bias (Accuracy):**
-    *   *Goal:* Zero mean error.
-    *   *Metric:* **Bias** (target = 0.0).
-    *   *Meaning:* On average, are our projections too high (positive) or too low (negative)?
+## Key Insights
+1.  **RB Model is Solid:** The Bimodal (Open/RedZone) split for rushing solved the RB calibration issues.
+2.  **QB Upside Missing:** QBs hit their 90th percentile projection 30% of the time. We are likely under-estimating Rushing production or "Shootout" passing volume for elite QBs.
+3.  **Kicker Safety:** Kickers are more predictable and lower-ceiling than our model currently assumes.
+4.  **DST Variance:** (Excluded from table but analyzed separately) DSTs account for the majority of "Scrub Booms" due to random TDs.
 
----
-
-## 📜 Benchmark History
-
-### v418: Aggressive YAC (Open Field Global) (Nov 26, 2025) - CURRENT GOLD STANDARD
-**Change:** Trained YAC models *only* on Open Field data (>20 yards), but applied them *globally* (even in Red Zone).
-*   *Theory:* A player's ability to break tackles (YAC) is best measured in the open field. In the Red Zone, we should sample from their "Open Field Potential" and let the engine mechanically cap the yards at the goal line. Using a "Red Zone" model double-penalizes them (statistical shortness + mechanical cap).
-**Outcome:** **The Winner.**
-*   **Fail High:** 25.8% (Matches best).
-*   **RMSE:** 14.88 (Solid).
-*   **Coverage:** 65.4% (Best yet).
-
-| Metric | Value | Delta (v417) | Interpretation |
-| :--- | :--- | :--- | :--- |
-| **RMSE** | **14.88** | +0.17 | Acceptable trade-off. |
-| **Bias** | **+0.08** | +0.01 | Neutral. |
-| **Coverage (90%)** | **65.4%** | +0.3% | ✅ Best yet. |
-| **Fail High** | **25.8%** | -0.5% | ✅ Unlocked boom plays. |
-| **Fail Low** | **8.8%** | +0.2% | Stable. |
-
-### v417: Split YAC (Nov 26, 2025)
-**Change:** Split YAC into Open/RZ (using RZ model for RZ plays).
-**Outcome:** Good RMSE (14.71) but slightly worse Ceiling (26.3%). The RZ model likely suppressed "breakaway TD" potential.
-
-### v410: Censored Boom Fix (Rushing) (Nov 26, 2025)
-**Change:** Split Rushing KDEs into Open/RZ.
-**Outcome:** Big win for Ceiling (25.9%).
-
----
-
-## 🧠 Lessons Learned
-
-*   **Censoring Matters:** Field position acts as a hard clamp on yardage distributions.
-*   **Mechanical vs Statistical Constraints:**
-    *   For **Rushing**, the RZ is a different physical environment (wall of bodies). Splitting models (Open vs RZ) works best.
-    *   For **Receiving (YAC)**, the RZ constraint is primarily the endzone itself. Using an "Open Field" model globally and letting the engine cap the yards works best.
-*   **Uncertainty is Key:** Modeling role uncertainty (injuries) is crucial.
-
----
-
-## 🏃 How to Run Benchmarks
-
-```bash
-# Run the full suite (approx 30 seconds)
-poetry run python benchmark.py --simulations 50 --version v419_candidate
-```
+## Methodology
+*   **Simulations:** 50 per game.
+*   **Weeks:** 2022 (W1, W8, W17), 2023 (W1, W8, W17).
+*   **Metric:** PIT (Probability Integral Transform) Calibration.
