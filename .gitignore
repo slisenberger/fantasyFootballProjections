@@ -17,3 +17,6 @@ weekly_stats.csv
 .gemini/
 .idea/
 .vscode/
+
+# Ignore all CSVs (Data privacy)
+*.csv
