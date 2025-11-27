@@ -43,6 +43,7 @@ class GameState:
         self.completion_model = models["completion_model"]
         self.field_goal_model = models["field_goal_model"]
         self.playcall_model = models["playcall_model"]
+        self.clock_model = models.get("clock_model", {})
         
         # Retrieve pre-sampled buffers from models dict (Optimization)
         self.air_yards_samples = {
@@ -64,6 +65,11 @@ class GameState:
         self.int_return_samples = models["int_return_samples"]
 
         self.game_over = False
+        
+        # Overtime State
+        self.in_overtime = False
+        self.ot_possession_count = 0
+        self.ot_first_drive_score = 0 # 0=None/Punt, 3=FG
 
         # --- OPTIMIZATION: Pre-cache stats to avoid Pandas overhead in loop ---
         
@@ -163,6 +169,9 @@ class GameState:
             return self.rules.pa_35_plus
 
     def change_possession(self):
+        if self.in_overtime:
+            self.ot_possession_count += 1
+            
         if self.posteam == self.home_team:
             self.posteam = self.away_team
         else:
@@ -176,6 +185,13 @@ class GameState:
             self.home_team if self.posteam == self.away_team else self.away_team
         )
         self.yard_line = 75
+
+    def start_overtime(self):
+        self.in_overtime = True
+        # self.quarter will be incremented to 5 in advance_clock immediately after this returns
+        self.posteam = random.choice([self.home_team, self.away_team])
+        self.yard_line = 75
+        self.first_down()
 
     def kickoff(self):
         self.change_possession()
@@ -266,6 +282,10 @@ class GameState:
             self.yard_line -= air_yards
             # Change possession and return
             self.change_possession()
+            
+            if self.in_overtime and self.ot_possession_count == 2 and self.ot_first_drive_score == 3:
+                self.game_over = True
+
             return_yards = self._get_sample(self.int_return_samples)
             self.yard_line -= return_yards
 
@@ -363,6 +383,9 @@ class GameState:
             self.home_score += 6
         else:
             self.away_score += 6
+            
+        if self.in_overtime:
+            self.game_over = True
 
     def safety(self):
         # Give 2 points to the team that does not have the ball.
@@ -370,43 +393,70 @@ class GameState:
             self.away_score += 2
         else:
             self.home_score += 2
+            
+        if self.in_overtime:
+            self.game_over = True
 
         self.kickoff()
 
-    # Manage the clock after a play. This is very unsophisticated.
-    # Areas of improvement:
-    # - Modeling getting out of bounds in 4th quarter situations
-    # - Modeling timeouts and hurry-up situations
-    # - Modeling spikes and kneels
-    # - Modeling clock loss due to penalities
+    # Manage the clock using empirical runoff data
     def advance_clock(self, playcall, sack, is_complete, scramble):
         original_sec_remaining = self.sec_remaining
-        if playcall == PlayType.PASS and not is_complete and not sack and not scramble:
-            self.sec_remaining -= 5
-        elif playcall == PlayType.FIELD_GOAL:
-            self.sec_remaining -= 5
+        
+        # Determine Buckets
+        qtr_bucket = 'OT' if self.quarter >= 5 else ('Q4' if self.quarter == 4 else 'regulation')
+        
+        if self.sec_remaining > 300: time_bucket = 'high'
+        elif self.sec_remaining > 120: time_bucket = 'mid'
+        else: time_bucket = 'low'
+        
+        diff = self.score_differential()
+        if diff >= 9: score_bucket = 'leading_big'
+        elif diff > 0: score_bucket = 'leading_close'
+        elif diff == 0: score_bucket = 'tied'
+        elif diff > -9: score_bucket = 'trailing_close'
+        else: score_bucket = 'trailing_big'
+        
+        # Determine Play Type Detail
+        if playcall == PlayType.PASS:
+            if sack: play_type_detail = 'pass_complete' # Sack keeps clock running like complete
+            elif is_complete: play_type_detail = 'pass_complete'
+            else: play_type_detail = 'pass_incomplete'
+        elif playcall == PlayType.RUN:
+            play_type_detail = 'run'
         elif playcall == PlayType.PUNT:
-            self.sec_remaining -= 5
+            play_type_detail = 'punt'
+        elif playcall == PlayType.FIELD_GOAL:
+            play_type_detail = 'field_goal'
         else:
-            clock_burn = 0
-            # Experiment with variable clock times in the 4th quarter for
-            # leading and trailing teams. Leading teams will try to use
-            # all of their clock. Trailing teams will use less.
-            # This is very hacky, but will hopefully continue to juice offenses
-            # by adding more passing plays.
-            if self.quarter == 4:
-                if self.is_winning(self.posteam):
-                    clock_burn = 45
-                else:
-                    # Assume plays stop out of bounds regularly.
-                    if self.sec_remaining < 5 * 60:
-                        clock_burn = 10
-                    else:
-                        clock_burn = 30
-            else:
-                clock_burn = 35
+            play_type_detail = 'run'
 
-            self.sec_remaining -= clock_burn
+        # Lookup
+        runoff = self.clock_model.get((qtr_bucket, time_bucket, score_bucket, play_type_detail))
+        
+        if runoff is not None:
+            self.sec_remaining -= runoff
+        else:
+            # Fallback (Original Logic)
+            if playcall == PlayType.PASS and not is_complete and not sack and not scramble:
+                self.sec_remaining -= 5
+            elif playcall == PlayType.FIELD_GOAL:
+                self.sec_remaining -= 5
+            elif playcall == PlayType.PUNT:
+                self.sec_remaining -= 5
+            else:
+                clock_burn = 0
+                if self.quarter == 4:
+                    if self.is_winning(self.posteam):
+                        clock_burn = 45
+                    else:
+                        if self.sec_remaining < 5 * 60:
+                            clock_burn = 10
+                        else:
+                            clock_burn = 30
+                else:
+                    clock_burn = 35
+                self.sec_remaining -= clock_burn
 
         # Check for the 2 minute warning.
         if self.quarter in [2, 4] and (
@@ -417,10 +467,20 @@ class GameState:
         if self.sec_remaining <= 0:
             if self.quarter == 2:
                 self.half_time()
-            if self.quarter == 4:
+            elif self.quarter == 4:
+                if self.home_score != self.away_score:
+                    self.game_end()
+                else:
+                    self.start_overtime()
+            elif self.quarter >= 5:
                 self.game_end()
-            self.quarter += 1
-            self.sec_remaining = 15 * 60
+            
+            if not self.game_over:
+                self.quarter += 1
+                if self.quarter <= 4:
+                    self.sec_remaining = 15 * 60
+                else:
+                    self.sec_remaining = 10 * 60 # 10 min OT
 
     def is_winning(self, team):
         if self.home_team == team:
@@ -437,6 +497,10 @@ class GameState:
 
     def turnover_on_downs(self):
         self.change_possession()
+        
+        if self.in_overtime and self.ot_possession_count == 2 and self.ot_first_drive_score == 3:
+            self.game_over = True
+
         self.yard_line = 100 - self.yard_line
         self.first_down()
 
@@ -463,6 +527,7 @@ class GameState:
         PASS_INDEX = 1
         RUN_INDEX = 3
         # Baseline -- Use a logistic regression model to choose a playtype.
+        
         model_input = [
             self.down,
             self.yds_to_go,
@@ -621,6 +686,7 @@ class GameState:
 
     def field_goal(self):
         kicking_yards = self.yard_line + 17
+        
         model_input = [
             self.home_score - self.away_score,
             self.sec_remaining,
@@ -648,8 +714,23 @@ class GameState:
                 self.home_score += 3
             else:
                 self.away_score += 3
-            self.kickoff()
+            
+            if self.in_overtime:
+                if self.ot_possession_count == 0:
+                    self.ot_first_drive_score = 3
+                    self.kickoff()
+                elif self.ot_possession_count == 1:
+                    if self.ot_first_drive_score == 3:
+                        self.kickoff() # Tied again (sudden death next)
+                    else:
+                        self.game_over = True # We scored, they didn't
+                else:
+                    self.game_over = True # Sudden death
+            else:
+                self.kickoff()
         else:
+            if self.in_overtime and self.ot_possession_count == 1 and self.ot_first_drive_score == 3:
+                 self.game_over = True # Chasing team missed
             self.turnover_on_downs()
 
     def get_pos_player_stats(self):

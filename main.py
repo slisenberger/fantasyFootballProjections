@@ -343,6 +343,17 @@ def get_models():
         "field_goal_model": kicking.build_or_load_kicking_model(),
         "int_return_model": int_return.build_or_load_int_return_kde(),
     }
+    
+    # Load Clock Model
+    try:
+        clock_df = pd.read_csv("stats/clock_runoff.csv")
+        models["clock_model"] = clock_df.set_index(
+            ['qtr_bucket', 'time_bucket', 'score_bucket', 'play_type_detail']
+        )['mean'].to_dict()
+    except FileNotFoundError:
+        print("Warning: Clock model not found.")
+        models["clock_model"] = {}
+
     models.update(receivers.build_or_load_all_air_yards_kdes())
     models.update(receivers.build_or_load_all_yac_kdes())
 

@@ -11,9 +11,10 @@ This document captures the vision and feature backlog for the Fantasy Football P
 The core value proposition is *better predictions*.
 
 ### 🟢 Short Term (High ROI)
-*   **Empirical Clock Management:** Replace the hardcoded "35s runoff" with a granular, state-dependent model (e.g., "Trailing by 7, 2 mins left -> 15s runoff"). This increases play volume in close games, boosting variance.
-*   **Overtime Logic:** (Completed v407).
 *   **Probabilistic Injury Impact:** Model "Questionable" players with a bimodal distribution (Active/Inactive) or reduced snap count distribution, rather than a binary flag.
+*   **Clock Runoff Regression:**
+    *   *Current:* Empirical lookup table (mean runoff per context bucket).
+    *   *Future:* Train a regression model to predict `runoff` based on score, time, and *team tempo* stats. This would capture the variance between fast-paced and slow-paced offenses.
 
 ### 🟡 Medium Term
 *   **The "Censored Boom" Problem (KDE Refinement):**

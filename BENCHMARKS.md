@@ -25,34 +25,33 @@ To evaluate a model version, we look at three key indicators:
 
 ## 📜 Benchmark History
 
+### v408: Empirical Clock Management (Nov 26, 2025)
+**Change:** Implemented an empirical look-up table for clock runoff based on score/time/play type. Replaces hardcoded 35s runoff.
+**Outcome:** Neutral to slight degradation. While mechanically superior (capturing hurry-up vs clock-killing), the net effect on total play volume was negligible. This reinforces that clock variance alone is not the primary driver of the missing "Boom" weeks.
+
+| Metric | Value | Delta (v407) | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **RMSE** | **15.21** | +0.06 | Neutral. |
+| **Bias** | **+0.08** | 0.00 | Neutral. |
+| **Coverage (90%)** | **63.8%** | -0.6% | Slight degradation (over-confident). |
+| **Fail High** | **28.0%** | +0.4% | Still missing "boom" weeks. |
+| **Speed** | **~12s** | 0s | No impact on speed. |
+
+### v407: Overtime Logic (Nov 26, 2025)
+**Change:** Implemented Overtime state machine (Coin toss, Sudden Death).
+**Outcome:** Slight improvement in Bias and Fail High rate.
+
 ### v406: Verification & Full Optimization (Nov 26, 2025)
 **Change:** Full vectorization of `stats/players.py` combined with "De-Pandas" engine optimization.
 **Outcome:** **7.5x End-to-End Speedup** (12s/week vs 90s/week). Metrics confirmed stable against baseline.
 
-| Metric | Value | Delta (v402) | Interpretation |
-| :--- | :--- | :--- | :--- |
-| **RMSE** | **15.43** | +0.25 | Stable (within variance). |
-| **Bias** | **+0.09** | +0.01 | Stable. |
-| **Coverage (90%)** | **64.7%** | -1.1% | Stable. |
-| **Fail High** | **28.3%** | +1.2% | Stable. |
-| **Speed** | **~12s** | **-78s** | **7.5x Faster** 🚀 |
+---
 
-### v405: The "Surgical Strike" Optimization (Nov 26, 2025)
-**Change:** Removed Pandas overhead from the hot simulation loop (`advance_snap`).
-**Outcome:** **Massive speedup.** Simulation core logic is ~9x faster.
+## 🧠 Lessons Learned
 
-### v402: Baseline (Nov 26, 2025)
-**Suite:** Weeks 8 & 17 of 2022-2023.
-**Sample Size:** 646 Player-Games.
-
-| Metric | Value | Target | Status | Interpretation |
-| :--- | :--- | :--- | :--- | :--- |
-| **RMSE** | **15.18** | 0 | ℹ️ | Average error magnitude. |
-| **Bias** | **+0.08** | 0.0 | ⚠️ | Slight under-prediction bias (Actuals > Sims). |
-| **Coverage (90%)** | **65.8%** | 90% | ❌ | **Over-confident.** Actual scores fall outside our 90% range 34% of the time. |
-| **Fail Low** | **7.1%** | 5% | ⚠️ | Slightly high. We over-predicted ~7% of players (Actual < 5th percentile). |
-| **Fail High** | **27.1%** | 5% | ❌ | **Major Miss.** We massively under-predicted boom weeks. 27% of players scored *above* our 95th percentile. |
-| **KS Stat** | **0.219** | < 0.05 | ❌ | Poor calibration. Skewed towards under-prediction. |
+*   **Clock Logic:** The empirical lookup table is "pragmatic and likely an improvement," but a static average per bucket misses the *variance* of clock management (e.g., some teams are exceptionally slow/fast).
+    *   *Future Improvement:* Train a regression model (or KDE) to predict `runoff` given `score_diff`, `time_remaining`, and `team_tendencies`. This would capture team-specific tempo (e.g., Chip Kelly vs Sean McVay).
+*   **The "Boom" Barrier:** Neither Variance Injection (v403), OT (v407), nor Clock Management (v408) significantly dented the 28% "Fail High" rate. The **Censored Boom Hypothesis** (field length constraints) remains the top suspect.
 
 ---
 
@@ -60,7 +59,7 @@ To evaluate a model version, we look at three key indicators:
 
 ```bash
 # Run the full suite (approx 30 seconds)
-poetry run python benchmark.py --simulations 50 --version v407_candidate
+poetry run python benchmark.py --simulations 50 --version v409_candidate
 ```
 
-This will save results to `benchmarks/results_v407_candidate.json` and a detailed CSV.
+This will save results to `benchmarks/results_v409_candidate.json` and a detailed CSV.
