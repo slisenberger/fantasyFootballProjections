@@ -25,43 +25,38 @@ To evaluate a model version, we look at three key indicators:
 
 ## 📜 Benchmark History
 
+### v410: Censored Boom Fix (Rushing) (Nov 26, 2025)
+**Change:** Split Rushing KDEs into two zones: **Open Field** (yardline > 20) and **Red Zone** (yardline <= 20).
+*   *Theory:* Training on all runs suppresses "breakaway" potential because 5-yard TDs in the Red Zone look like 5-yard runs, polluting the distribution. By training Open Field KDEs only on unconstrained runs, we learn the true shape of "Boom" plays.
+**Outcome:** **Success.**
+*   **Fail High:** Dropped to **25.9%** (Lowest yet).
+*   **Bias:** Improved to **+0.06**.
+*   **Trade-off:** Slight increase in "Fail Low" (9.3%), possibly due to tighter Red Zone distributions creating more goal-line stands.
+
+| Metric | Value | Delta (v409) | Interpretation |
+| :--- | :--- | :--- | :--- |
+| **RMSE** | **15.02** | -0.01 | Neutral. |
+| **Bias** | **+0.06** | -0.01 | ✅ Improvement. |
+| **Coverage (90%)** | **64.9%** | +0.2% | ✅ Improvement. |
+| **Fail High** | **25.9%** | -0.9% | ✅ Unlocked more long runs. |
+| **Fail Low** | **9.3%** | +0.8% | ⚠️ More busts. |
+
 ### v409: Probabilistic Injury Injection (Nov 26, 2025)
 **Change:** Added stochastic simulation for "Questionable" (Q) players.
-*   25% of sims: Player is removed (Inactive).
-*   75% of sims: Player volume (`target_share`, `carry_share`) is reduced by 20% (Active but Limited/Decoy).
 **Outcome:** **Significant Improvement.**
-*   **RMSE:** Dropped to **15.03**.
-*   **Fail High:** Improved to **26.8%**. By forcing backups to play 100% of snaps in 25% of worlds, we unlocked their "Boom" potential.
-*   **Coverage:** Improved to **64.7%**.
-
-| Metric | Value | Delta (v408) | Interpretation |
-| :--- | :--- | :--- | :--- |
-| **RMSE** | **15.03** | -0.18 | ✅ Improvement. |
-| **Bias** | **+0.07** | -0.01 | ✅ Improvement. |
-| **Coverage (90%)** | **64.7%** | +0.9% | ✅ Improvement. |
-| **Fail High** | **26.8%** | -1.2% | ✅ Better at capturing Booms (Backups). |
-| **Fail Low** | **8.5%** | +0.3% | Slight increase in "Busts" (Starters benching), which is realistic. |
+*   **Fail High:** 26.8%
+*   **Coverage:** 64.7%
 
 ### v408: Empirical Clock Management (Nov 26, 2025)
-**Change:** Implemented an empirical look-up table for clock runoff based on score/time/play type. Replaces hardcoded 35s runoff.
-**Outcome:** Neutral to slight degradation. While mechanically superior (capturing hurry-up vs clock-killing), the net effect on total play volume was negligible.
-
-### v407: Overtime Logic (Nov 26, 2025)
-**Change:** Implemented Overtime state machine (Coin toss, Sudden Death).
-**Outcome:** Slight improvement in Bias and Fail High rate.
-
-### v406: Verification & Full Optimization (Nov 26, 2025)
-**Change:** Full vectorization of `stats/players.py` combined with "De-Pandas" engine optimization.
-**Outcome:** **7.5x End-to-End Speedup** (12s/week vs 90s/week). Metrics confirmed stable against baseline.
+**Outcome:** Neutral. Better physics, same calibration.
 
 ---
 
 ## 🧠 Lessons Learned
 
-*   **Uncertainty is Key:** Simply adding variance to *efficiency* (v403) failed. Adding variance to *opportunity* (Injury Injection v409) succeeded. This suggests that **Role Uncertainty** is a bigger driver of fantasy variance than **Play Uncertainty**.
-*   **Clock Logic:** The empirical lookup table is "pragmatic and likely an improvement," but a static average per bucket misses the *variance* of clock management (e.g., some teams are exceptionally slow/fast).
-    *   *Future Improvement:* Train a regression model (or KDE) to predict `runoff` given `score_diff`, `time_remaining`, and `team_tendencies`. This would capture team-specific tempo (e.g., Chip Kelly vs Sean McVay).
-*   **The "Boom" Barrier:** The **Censored Boom Hypothesis** (field length constraints) remains the top suspect for the remaining 26.8% "Fail High" rate.
+*   **Censoring Matters:** Field position acts as a hard clamp on yardage distributions. Splitting models by zone ("Contextual KDEs") is a viable path to fixing the "Fail High" rate.
+    *   *Next Step:* Apply this same logic to **Receiving Models** (Air Yards, YAC), which suffer from the same endzone constraints.
+*   **Uncertainty is Key:** (v409 Finding) Modeling role uncertainty (injuries) is crucial.
 
 ---
 
@@ -69,7 +64,5 @@ To evaluate a model version, we look at three key indicators:
 
 ```bash
 # Run the full suite (approx 30 seconds)
-poetry run python benchmark.py --simulations 50 --version v410_candidate
+poetry run python benchmark.py --simulations 50 --version v411_candidate
 ```
-
-This will save results to `benchmarks/results_v410_candidate.json` and a detailed CSV.

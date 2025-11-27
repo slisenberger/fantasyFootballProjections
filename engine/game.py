@@ -60,7 +60,9 @@ class GameState:
             "ALL": models["yac_ALL_samples"],
         }
         
-        self.rush_samples = models["rush_samples"]
+        self.rush_open_samples = models["rush_open_samples"]
+        self.rush_rz_samples = models["rush_rz_samples"]
+        
         self.scramble_samples = models["scramble_samples"]
         self.int_return_samples = models["int_return_samples"]
 
@@ -658,8 +660,17 @@ class GameState:
         return yac
 
     def compute_carry_yards(self, carrier):
-        # Sample from pre-computed buffer
-        yards = self._get_sample(self.rush_samples)
+        # Determine dist to goal to check Red Zone
+        if self.posteam == self.home_team:
+            dist_to_goal = 100 - self.yard_line
+        else:
+            dist_to_goal = self.yard_line
+            
+        # Red Zone is <= 20 yards. Sample from appropriate KDE.
+        if dist_to_goal <= 20:
+            yards = self._get_sample(self.rush_rz_samples)
+        else:
+            yards = self._get_sample(self.rush_open_samples)
         
         relative_ypc_est = carrier.get("relative_ypc_est", 1.0)
         defense_relative_ypc = self.get_def_team_stats().get(

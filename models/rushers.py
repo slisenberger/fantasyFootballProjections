@@ -5,19 +5,35 @@ import pandas as pd
 import numpy as np
 import joblib
 
-rush_model_name = "models/trained_models/rushing_yards_kde"
+rush_open_model_name = "models/trained_models/rushing_yards_open_kde"
+rush_rz_model_name = "models/trained_models/rushing_yards_rz_kde"
 scramble_model_name = "models/trained_models/scramble_yards_kde"
 
 
-def build_or_load_rush_kde():
+def build_or_load_rush_open_kde():
     try:
-        return joblib.load(rush_model_name)
+        return joblib.load(rush_open_model_name)
     except FileNotFoundError:
         data = rusher_data()
         data = data.loc[data.rush == 1]
+        # Open Field: > 20 yards to go
+        data = data.loc[data.yardline_100 > 20]
         all_rush = data["rushing_yards"].dropna()
         model = fit_kde(all_rush)
-        joblib.dump(model, rush_model_name)
+        joblib.dump(model, rush_open_model_name)
+        return model
+
+def build_or_load_rush_rz_kde():
+    try:
+        return joblib.load(rush_rz_model_name)
+    except FileNotFoundError:
+        data = rusher_data()
+        data = data.loc[data.rush == 1]
+        # Red Zone: <= 20 yards to go
+        data = data.loc[data.yardline_100 <= 20]
+        all_rush = data["rushing_yards"].dropna()
+        model = fit_kde(all_rush)
+        joblib.dump(model, rush_rz_model_name)
         return model
 
 

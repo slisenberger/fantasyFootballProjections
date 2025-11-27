@@ -361,7 +361,8 @@ def project_ros(pbp_data, models, config):
 def get_models():
     models = {
         "playcall_model": playcall.build_or_load_playcall_model(),
-        "rush_model": rushers.build_or_load_rush_kde(),
+        "rush_open_model": rushers.build_or_load_rush_open_kde(),
+        "rush_rz_model": rushers.build_or_load_rush_rz_kde(),
         "scramble_model": rushers.build_or_load_scramble_kde(),
         "completion_model": completion.build_or_load_completion_model(),
         "field_goal_model": kicking.build_or_load_kicking_model(),
@@ -386,7 +387,9 @@ def get_models():
     SAMPLE_SIZE = 100000
     
     # Core Movement Models
-    models["rush_samples"] = models["rush_model"].sample(SAMPLE_SIZE).flatten()
+    models["rush_open_samples"] = models["rush_open_model"].sample(SAMPLE_SIZE).flatten()
+    models["rush_rz_samples"] = models["rush_rz_model"].sample(SAMPLE_SIZE).flatten()
+    
     models["scramble_samples"] = models["scramble_model"].sample(SAMPLE_SIZE).flatten()
     models["int_return_samples"] = models["int_return_model"].sample(SAMPLE_SIZE).flatten()
     
