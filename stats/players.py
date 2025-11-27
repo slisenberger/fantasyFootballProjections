@@ -221,8 +221,7 @@ def calculate(data, team_stats, season, week):
         .reset_index()
         .rename(columns={"kicker_player_id": "player_id"})
     )
-    build_player_id_map(data)
-    build_player_team_map(data)
+    # Useless calls removed from here
     offense_stats = (
         receiver_targets.merge(receiver_deep_targets, how="outer", on="player_id")
         .merge(receiver_red_zone_targets, how="outer", on="player_id")
@@ -347,157 +346,139 @@ def estimate_cpoe_attribution(data):
 
 def compute_cpoe_estimator(data):
     cpoe_prior = 0
-    cpoe_span = passer_span
-    biased_cpoe = (
-        data.groupby(["passer_player_id"])["cpoe"]
-        .apply(lambda d: prepend(d, cpoe_prior))
-        .to_frame()
-    )
-    cpoe_est = (
-        biased_cpoe.groupby(["passer_player_id"])["cpoe"]
-        .apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean())
-        .to_frame()
-    )
-    cpoe_est_now = (
-        cpoe_est.groupby(["passer_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"passer_player_id": "player_id", "cpoe": "cpoe_est"})[
-            ["player_id", "cpoe_est"]
-        ]
-    )
-    return cpoe_est_now
+    priors_df = data[['passer_player_id']].drop_duplicates()
+    priors_df['cpoe'] = cpoe_prior
+
+    return _compute_estimator_vectorized(
+        data,
+        'passer_player_id',
+        'cpoe',
+        passer_span,
+        priors_df,
+        'cpoe_est'
+    ).rename(columns={'passer_player_id': 'player_id'})
 
 
 def compute_scramble_rate_estimator(data):
     data = data.loc[data["pass"] == 1]
-    scramble_prior = data.loc[data.qb_scramble == 1].shape[0] / data.shape[0]
-    scramble_span = passer_span
-    biased_scramble = (
-        data.groupby(["passer_id"])["qb_scramble"]
-        .apply(lambda d: prepend(d, scramble_prior))
-        .to_frame()
-    )
-    scramble_est = (
-        biased_scramble.groupby(["passer_id"])["qb_scramble"]
-        .apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean())
-        .to_frame()
-    )
-    return (
-        scramble_est.groupby(["passer_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"passer_id": "player_id", "qb_scramble": "scramble_rate_est"})[
-            ["player_id", "scramble_rate_est"]
-        ]
-    )
+    scramble_prior = data.loc[data.qb_scramble == 1].shape[0] / data.shape[0] if not data.empty else 0
+
+    priors_df = data[['passer_id']].drop_duplicates()
+    priors_df['qb_scramble'] = scramble_prior
+
+    return _compute_estimator_vectorized(
+        data,
+        'passer_id',
+        'qb_scramble',
+        passer_span,
+        priors_df,
+        'scramble_rate_est'
+    ).rename(columns={'passer_id': 'player_id'})
 
 
 def compute_big_carry_rate_estimator(data):
     # Only use rushes, avoid QB scrambles.
-    data = data.loc[data["rush"] == 1]
+    data = data.loc[data["rush"] == 1].copy()
     data.loc[data.rushing_yards >= 10, "big_carry"] = 1
     data["big_carry"].fillna(0, inplace=True)
-    big_carry_prior = data.loc[data.big_carry == 1].shape[0] / data.shape[0]
-    big_carry_span = rusher_span
-    biased = (
-        data.groupby(["rusher_player_id"])["big_carry"]
-        .apply(lambda d: prepend(d, big_carry_prior))
-        .to_frame()
-    )
-    big_carry_est = (
-        biased.groupby(["rusher_player_id"])["big_carry"]
-        .apply(lambda x: x.ewm(span=big_carry_span, adjust=False).mean())
-        .to_frame()
-    )
-    return (
-        big_carry_est.groupby(["rusher_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={"rusher_player_id": "player_id", "big_carry": "big_carry_rate_est"}
-        )[["player_id", "big_carry_rate_est"]]
-    )
+    
+    big_carry_prior = data.loc[data.big_carry == 1].shape[0] / data.shape[0] if not data.empty else 0
+    
+    priors_df = data[['rusher_player_id']].drop_duplicates()
+    priors_df['big_carry'] = big_carry_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'rusher_player_id', 
+        'big_carry', 
+        rusher_span, 
+        priors_df, 
+        'big_carry_rate_est'
+    ).rename(columns={'rusher_player_id': 'player_id'})
 
 
 def compute_deep_target_rate_estimator(data):
     data.loc[data.air_yards >= 30, "deep_target"] = 1
     data["deep_target"].fillna(0, inplace=True)
     deep_target_prior = 0
-    deep_target_span = receiver_span
-    biased = (
-        data.groupby(["receiver_player_id"])["deep_target"]
-        .apply(lambda d: prepend(d, deep_target_prior))
-        .to_frame()
-    )
-    deep_target_est = (
-        biased.groupby(["receiver_player_id"])["deep_target"]
-        .apply(lambda x: x.ewm(span=deep_target_span, adjust=False).mean())
-        .to_frame()
-    )
-    return (
-        deep_target_est.groupby(["receiver_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={
-                "receiver_player_id": "player_id",
-                "deep_target": "deep_target_rate_est",
-            }
-        )[["player_id", "deep_target_rate_est"]]
-    )
+    
+    priors_df = data[['receiver_player_id']].drop_duplicates()
+    priors_df['deep_target'] = deep_target_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'receiver_player_id', 
+        'deep_target', 
+        receiver_span, 
+        priors_df, 
+        'deep_target_rate_est'
+    ).rename(columns={'receiver_player_id': 'player_id'})
 
 
 def compute_yards_per_scramble_estimator(data):
     data = data.loc[data["qb_scramble"] == 1]
-    # Essentially, use the last 100 scramble window to judge talent.
     scramble_prior = data["rushing_yards"].mean()
-    scramble_span = rusher_span
-    biased_scramble = (
-        data.groupby(["passer_id"])["rushing_yards"]
-        .apply(lambda d: prepend(d, scramble_prior))
-        .to_frame()
-    )
-    scramble_est = (
-        biased_scramble.groupby(["passer_id"])["rushing_yards"]
-        .apply(lambda x: x.ewm(span=scramble_span, adjust=False).mean())
-        .to_frame()
-    )
-    return (
-        scramble_est.groupby(["passer_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={
-                "passer_id": "player_id",
-                "rushing_yards": "yards_per_scramble_est",
-            }
-        )[["player_id", "yards_per_scramble_est"]]
-    )
+    
+    priors_df = data[['passer_id']].drop_duplicates()
+    priors_df['rushing_yards'] = scramble_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'passer_id', 
+        'rushing_yards', 
+        rusher_span, 
+        priors_df, 
+        'yards_per_scramble_est'
+    ).rename(columns={'passer_id': 'player_id'})
 
 
 def compute_receiver_cpoe_estimator(data):
     cpoe_prior = 0
-    cpoe_span = receiver_span
-    biased_cpoe = (
-        data.groupby(["receiver_player_id"])["cpoe"]
-        .apply(lambda d: prepend(d, cpoe_prior))
-        .to_frame()
-    )
-    cpoe_est = (
-        biased_cpoe.groupby(["receiver_player_id"])["cpoe"]
-        .apply(lambda x: x.ewm(span=cpoe_span, adjust=False).mean())
-        .to_frame()
-    )
-    cpoe_est_now = (
-        cpoe_est.groupby(["receiver_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={"receiver_player_id": "player_id", "cpoe": "receiver_cpoe_est"}
-        )[["player_id", "receiver_cpoe_est"]]
-    )
-    return cpoe_est_now
+    priors_df = data[['receiver_player_id']].drop_duplicates()
+    priors_df['cpoe'] = cpoe_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'receiver_player_id', 
+        'cpoe', 
+        receiver_span, 
+        priors_df, 
+        'receiver_cpoe_est'
+    ).rename(columns={'receiver_player_id': 'player_id'})
+
+
+def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, result_col_name):
+    """
+    Vectorized calculation of EWMA with prior seeding.
+    """
+    # 1. Prepare Priors
+    priors_df = priors_df[[group_col, target_col]].copy()
+    priors_df['_sort_key'] = 0
+    
+    # 2. Prepare Main Data
+    main_df = data[[group_col, target_col]].copy()
+    main_df['_sort_key'] = 1
+    
+    # 3. Concat
+    combined = pd.concat([priors_df, main_df], ignore_index=True)
+    
+    # Filter out NaN groups (groupby drops them, causing length mismatch otherwise)
+    combined = combined.dropna(subset=[group_col])
+    
+    # 4. Sort (Stable) to ensure Prior comes first, then time order preserved
+    combined = combined.sort_values(by=[group_col, '_sort_key'], kind='mergesort')
+    
+    # 5. EWM
+    # Note: groupby().ewm() returns a MultiIndex series (group, index)
+    est = combined.groupby(group_col)[target_col].ewm(span=span, adjust=False).mean()
+    
+    # 6. Align results
+    # We assign values back. Since 'est' preserves order of 'combined', we can just assign .values
+    combined[result_col_name] = est.values
+    
+    # 7. Extract latest estimate (tail 1)
+    result = combined.groupby(group_col).tail(1)[[group_col, result_col_name]]
+    return result
 
 
 def compute_air_yards_estimator(data):
@@ -509,88 +490,54 @@ def compute_air_yards_estimator(data):
     }
 
     def get_prior(pos):
-        if pos in air_yards_priors:
-            return air_yards_priors[pos]
-        else:
-            return air_yards_priors["ALL"]
+        return air_yards_priors.get(pos, air_yards_priors["ALL"])
 
-    # Essentially, use the last 200 target window to judge completion.
-    air_yards_span = receiver_span
-    all_biased_data = []
-    # For each position, get that position's data, break down by receiver ID, and apply a special prior
-    for pos in ["RB", "WR", "TE", "FB"]:
-        all_biased_data.append(
-            data.loc[data.position_receiver == pos]
-            .groupby(["receiver_player_id"])["air_yards"]
-            .apply(lambda d: prepend(d, get_prior(pos)))
-            .to_frame()
-        )
-    biased_ay = pd.concat(all_biased_data)
-    print(biased_ay)
-    ay_est = (
-        biased_ay.groupby(["receiver_player_id"])["air_yards"]
-        .apply(lambda x: x.ewm(span=air_yards_span, adjust=False).mean())
-        .to_frame()
-    )
-    ay_est_now = (
-        ay_est.groupby(["receiver_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={"receiver_player_id": "player_id", "air_yards": "air_yards_est"}
-        )[["player_id", "air_yards_est"]]
-    )
-    return ay_est_now
+    # Generate Priors DataFrame
+    priors_df = data[['receiver_player_id', 'position_receiver']].drop_duplicates('receiver_player_id')
+    priors_df['air_yards'] = priors_df['position_receiver'].map(get_prior)
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'receiver_player_id', 
+        'air_yards', 
+        receiver_span, 
+        priors_df, 
+        'air_yards_est'
+    ).rename(columns={'receiver_player_id': 'player_id'})
 
 
 def compute_ypc_estimator(data):
     data = data.loc[data.rush == 1]
     ypc_prior = data["rushing_yards"].mean()
-    ypc_span = rusher_span
-    biased_ypc = (
-        data.groupby(["rusher_player_id"])["rushing_yards"]
-        .apply(lambda d: prepend(d, ypc_prior))
-        .to_frame()
-    )
-    ypc_est = (
-        biased_ypc.groupby(["rusher_player_id"])["rushing_yards"]
-        .apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean())
-        .to_frame()
-    )
-    ypc_est_now = (
-        ypc_est.groupby(["rusher_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"rusher_player_id": "player_id", "rushing_yards": "ypc_est"})[
-            ["player_id", "ypc_est"]
-        ]
-    )
-    return ypc_est_now
+    
+    priors_df = data[['rusher_player_id']].drop_duplicates()
+    priors_df['rushing_yards'] = ypc_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'rusher_player_id', 
+        'rushing_yards', 
+        rusher_span, 
+        priors_df, 
+        'ypc_est'
+    ).rename(columns={'rusher_player_id': 'player_id'})
 
 
 def compute_ypc_middle_estimator(data):
     data = data.loc[data.rush == 1 & data.run_gap.isin(["guard", "tackle"])]
     ypc_prior = data["rushing_yards"].mean()
-    ypc_span = rusher_span
-    biased_ypc = (
-        data.groupby(["rusher_player_id"])["rushing_yards"]
-        .apply(lambda d: prepend(d, ypc_prior))
-        .to_frame()
-    )
-    ypc_est = (
-        biased_ypc.groupby(["rusher_player_id"])["rushing_yards"]
-        .apply(lambda x: x.ewm(span=ypc_span, adjust=False).mean())
-        .to_frame()
-    )
-    ypc_est_now = (
-        ypc_est.groupby(["rusher_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={"rusher_player_id": "player_id", "rushing_yards": "ypc_middle_est"}
-        )[["player_id", "ypc_middle_est"]]
-    )
-    return ypc_est_now
+    
+    priors_df = data[['rusher_player_id']].drop_duplicates()
+    priors_df['rushing_yards'] = ypc_prior
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'rusher_player_id', 
+        'rushing_yards', 
+        rusher_span, 
+        priors_df, 
+        'ypc_middle_est'
+    ).rename(columns={'rusher_player_id': 'player_id'})
 
 
 # Use an ewma with a bias to estimate a player's chance of receiving checkdowns.
@@ -611,37 +558,19 @@ def compute_yac_estimator(data):
     }
 
     def get_prior(pos):
-        if pos in yac_priors:
-            return yac_priors[pos]
-        else:
-            return yac_priors["ALL"]
+        return yac_priors.get(pos, yac_priors["ALL"])
 
-    yac_span = receiver_span
-    all_biased_data = []
-    # For each position, get that position's data, break down by receiver ID, and apply a special prior
-    for pos in ["RB", "WR", "TE", "FB"]:
-        all_biased_data.append(
-            data.loc[data.position_receiver == pos]
-            .groupby(["receiver_player_id"])["yards_after_catch"]
-            .apply(lambda d: prepend(d, get_prior(pos)))
-            .to_frame()
-        )
-
-    biased_yac = pd.concat(all_biased_data)
-    yac_est = (
-        biased_yac.groupby(["receiver_player_id"])["yards_after_catch"]
-        .apply(lambda x: x.ewm(span=yac_span, adjust=False).mean())
-        .to_frame()
-    )
-    yac_est_now = (
-        yac_est.groupby(["receiver_player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(
-            columns={"receiver_player_id": "player_id", "yards_after_catch": "yac_est"}
-        )[["player_id", "yac_est"]]
-    )
-    return yac_est_now
+    priors_df = data[['receiver_player_id', 'position_receiver']].drop_duplicates('receiver_player_id')
+    priors_df['yards_after_catch'] = priors_df['position_receiver'].map(get_prior)
+    
+    return _compute_estimator_vectorized(
+        data, 
+        'receiver_player_id', 
+        'yards_after_catch', 
+        receiver_span, 
+        priors_df, 
+        'yac_est'
+    ).rename(columns={'receiver_player_id': 'player_id'})
 
 
 def calculate_weekly(data, weekly_team_stats, season):
@@ -798,25 +727,18 @@ def weekly_target_share_estimator(weekly_data):
     target_prior = 0
     # Temporarily shorten span for early season.
     target_span = 17
-    biased_targets = (
-        weekly_data.groupby(["player_id"])["target_percentage_wk"]
-        .apply(lambda d: prepend(d, target_prior))
-        .to_frame()
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['target_percentage_wk'] = target_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'target_percentage_wk', 
+        target_span, 
+        priors_df, 
+        'target_share_est'
     )
-    targets_est = (
-        biased_targets.groupby(["player_id"])["target_percentage_wk"]
-        .apply(lambda x: x.ewm(span=target_span, adjust=True, ignore_na=True).mean())
-        .to_frame()
-    )
-    targets_est_now = (
-        targets_est.groupby(["player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"target_percentage_wk": "target_share_est"})[
-            ["player_id", "target_share_est"]
-        ]
-    )
-    return targets_est_now
 
 
 def weekly_redzone_target_share_estimator(weekly_data):
@@ -824,25 +746,18 @@ def weekly_redzone_target_share_estimator(weekly_data):
     target_prior = 0
     # Temporarily shorten span for early season.
     target_span = 17
-    biased_targets = (
-        weekly_data.groupby(["player_id"])["redzone_target_percentage_wk"]
-        .apply(lambda d: prepend(d, target_prior))
-        .to_frame()
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['redzone_target_percentage_wk'] = target_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'redzone_target_percentage_wk', 
+        target_span, 
+        priors_df, 
+        'redzone_target_share_est'
     )
-    targets_est = (
-        biased_targets.groupby(["player_id"])["redzone_target_percentage_wk"]
-        .apply(lambda x: x.ewm(span=target_span, adjust=True, ignore_na=True).mean())
-        .to_frame()
-    )
-    targets_est_now = (
-        targets_est.groupby(["player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"redzone_target_percentage_wk": "redzone_target_share_est"})[
-            ["player_id", "redzone_target_share_est"]
-        ]
-    )
-    return targets_est_now
 
 
 def weekly_carry_share_estimator(weekly_data):
@@ -850,25 +765,18 @@ def weekly_carry_share_estimator(weekly_data):
     carry_prior = 0
     # Temporarily shorten span for early season.
     carry_span = 17
-    biased_carries = (
-        weekly_data.groupby(["player_id"])["carry_percentage_wk"]
-        .apply(lambda d: prepend(d, carry_prior))
-        .to_frame()
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['carry_percentage_wk'] = carry_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'carry_percentage_wk', 
+        carry_span, 
+        priors_df, 
+        'carry_share_est'
     )
-    carries_est = (
-        biased_carries.groupby(["player_id"])["carry_percentage_wk"]
-        .apply(lambda x: x.ewm(span=carry_span, adjust=True, ignore_na=True).mean())
-        .to_frame()
-    )
-    carries_est_now = (
-        carries_est.groupby(["player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"carry_percentage_wk": "carry_share_est"})[
-            ["player_id", "carry_share_est"]
-        ]
-    )
-    return carries_est_now
 
 
 def weekly_redzone_carry_share_estimator(weekly_data):
@@ -876,54 +784,52 @@ def weekly_redzone_carry_share_estimator(weekly_data):
     carry_prior = 0
     # Temporarily shorten span for early season.
     carry_span = 17
-    biased_carries = (
-        weekly_data.groupby(["player_id"])["redzone_carry_percentage_wk"]
-        .apply(lambda d: prepend(d, carry_prior))
-        .to_frame()
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['redzone_carry_percentage_wk'] = carry_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'redzone_carry_percentage_wk', 
+        carry_span, 
+        priors_df, 
+        'redzone_carry_share_est'
     )
-    carries_est = (
-        biased_carries.groupby(["player_id"])["redzone_carry_percentage_wk"]
-        .apply(lambda x: x.ewm(span=carry_span, adjust=True, ignore_na=True).mean())
-        .to_frame()
-    )
-    carries_est_now = (
-        carries_est.groupby(["player_id"])
-        .tail(1)
-        .reset_index()
-        .rename(columns={"redzone_carry_percentage_wk": "redzone_carry_share_est"})[
-            ["player_id", "redzone_carry_share_est"]
-        ]
-    )
-    return carries_est_now
 
 
 def build_player_id_map(data):
-    all_players = defaultdict(lambda: "Unknown")
-    for i in range(len(data)):
-        row = data.iloc[i]
-        if row.passer_player_id not in all_players:
-            all_players[row.passer_player_id] = row.passer_player_name
-        if row.receiver_player_id not in all_players:
-            all_players[row.receiver_player_id] = row.receiver_player_name
-        if row.rusher_player_id not in all_players:
-            all_players[row.rusher_player_id] = row.rusher_player_name
-        if row.kicker_player_id not in all_players:
-            all_players[row.kicker_player_id] = row.kicker_player_name
-
-    return all_players
+    # Vectorized approach
+    passers = data[["passer_player_id", "passer_player_name"]].rename(
+        columns={"passer_player_id": "player_id", "passer_player_name": "player_name"}
+    )
+    receivers = data[["receiver_player_id", "receiver_player_name"]].rename(
+        columns={"receiver_player_id": "player_id", "receiver_player_name": "player_name"}
+    )
+    rushers = data[["rusher_player_id", "rusher_player_name"]].rename(
+        columns={"rusher_player_id": "player_id", "rusher_player_name": "player_name"}
+    )
+    kickers = data[["kicker_player_id", "kicker_player_name"]].rename(
+        columns={"kicker_player_id": "player_id", "kicker_player_name": "player_name"}
+    )
+    
+    all_players_df = pd.concat([passers, receivers, rushers, kickers])
+    all_players_df = all_players_df.dropna().drop_duplicates(subset="player_id")
+    
+    # Convert to dict
+    return defaultdict(lambda: "Unknown", zip(all_players_df.player_id, all_players_df.player_name))
 
 
 def build_player_team_map(data):
-    player_teams = defaultdict(lambda: "Unknown")
-    for i in range(len(data)):
-        row = data.iloc[i]
-        if row.passer_player_id not in player_teams:
-            player_teams[row.passer_player_id] = row.posteam
-        if row.receiver_player_id not in player_teams:
-            player_teams[row.receiver_player_id] = row.posteam
-        if row.rusher_player_id not in player_teams:
-            player_teams[row.rusher_player_id] = row.posteam
-        if row.kicker_player_id not in player_teams:
-            player_teams[row.kicker_player_id] = row.posteam
-
-    return player_teams
+    # Vectorized approach
+    cols = ["posteam"]
+    passers = data[["passer_player_id"] + cols].rename(columns={"passer_player_id": "player_id"})
+    receivers = data[["receiver_player_id"] + cols].rename(columns={"receiver_player_id": "player_id"})
+    rushers = data[["rusher_player_id"] + cols].rename(columns={"rusher_player_id": "player_id"})
+    kickers = data[["kicker_player_id"] + cols].rename(columns={"kicker_player_id": "player_id"})
+    
+    all_teams_df = pd.concat([passers, receivers, rushers, kickers])
+    # Keep last to get most recent team
+    all_teams_df = all_teams_df.dropna().drop_duplicates(subset="player_id", keep="last")
+    
+    return defaultdict(lambda: "Unknown", zip(all_teams_df.player_id, all_teams_df.posteam))

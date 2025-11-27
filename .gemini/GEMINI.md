@@ -8,6 +8,7 @@
     - `main.py`: Orchestrator with CLI subcommands (`project`, `backtest`).
     - `settings.py`: Pydantic configuration (Scoring, Runtime).
     - `evaluation/calibration.py`: Truth harness (PIT metrics).
+    - `stats/players.py`: Vectorized statistical feature engineering.
 - **Philosophy:** Probabilistic distributions > Point estimates. Calibration is the primary metric of success.
 
 ## 🧠 Lessons Learned & Guidelines
@@ -21,8 +22,8 @@
     - **Speed as a Feature:** Simulation speed directly impacts iteration cycle time. 
     - **Performance Optimization:**
         - **Pandas is Poison (in loops):** Never access DataFrame values (e.g., `df.loc[x].values[0]`) inside a hot loop. It incurs a ~1000x overhead vs native Python types.
+        - **Vectorize Everything:** Replace `groupby().apply(custom_func)` with vectorized alternatives like `groupby().transform()`, `pd.concat`, or `groupby().ewm()`.
         - **Pre-Computation:** Resolve all lookups, filters, and weights *before* the simulation loop starts.
-        - **Scikit-Learn Overhead:** `predict_proba` is optimized for batches, not single rows. For single-row prediction in loops, manual dot-products are faster (though harder to maintain).
 - **Documentation:** Always update relevant documentation (e.g., `README.md`, `BENCHMARKS.md`, `ROADMAP.md`) after delivering improvements or significant changes.
 - **Workflow:** Prioritize "Robustness" and "Correctness" over quick hacks. Always verify backtesting actually produces metrics.
 - **Coding Style:** Use Enums (`PlayType`, `Position`) instead of strings. Use Pydantic for config. Avoid magic numbers.
