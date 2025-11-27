@@ -5,18 +5,24 @@ def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, 
     Vectorized calculation of EWMA with prior seeding.
     Ensures data is sorted by time before calculation.
     """
+    # Determine sort keys
+    sort_cols = [group_col]
+    has_season = 'season' in data.columns
+    if has_season:
+        sort_cols.append('season')
+    sort_cols.append(time_col)
+
     # 1. Prepare Priors
+    # Priors need to match the columns for concat
     priors_df = priors_df[[group_col, target_col]].copy()
     priors_df[time_col] = -1 # Ensure priors come before week 1
+    if has_season:
+        priors_df['season'] = data['season'].min() - 1 if not data.empty else 0
     
     # 2. Prepare Main Data
-    # Ensure time_col exists in data
-    if time_col not in data.columns:
-        # Fallback or Error? 
-        # If data is PBP, it usually has week.
-        raise ValueError(f"Column '{time_col}' missing from data for sorting.")
-
-    main_df = data[[group_col, target_col, time_col]].copy()
+    # Select only necessary columns
+    cols_needed = list(set([group_col, target_col] + sort_cols))
+    main_df = data[cols_needed].copy()
     
     # 3. Concat
     combined = pd.concat([priors_df, main_df], ignore_index=True)
@@ -25,7 +31,7 @@ def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, 
     combined = combined.dropna(subset=[group_col])
     
     # 4. Sort (Stable) to ensure Prior comes first, then time order preserved
-    combined = combined.sort_values(by=[group_col, time_col], ascending=True, kind='mergesort')
+    combined = combined.sort_values(by=sort_cols, ascending=True, kind='mergesort')
     
     # 5. EWM
     # Note: groupby().ewm() returns a MultiIndex series (group, index)
