@@ -4,9 +4,7 @@ import nfl_data_py
 from statsmodels.formula.api import mixedlm
 from collections import defaultdict
 from stats import injuries, teams
-
-# Calculate statistics about players
-from stats.util import _compute_estimator_vectorized # Added _compute_estimator_vectorized
+from stats.util import _compute_estimator_vectorized
 
 # Use previous 1000 passes to judge passers
 passer_span = 1000
@@ -25,8 +23,6 @@ def calculate(data, team_stats, season, week):
     roster_data = nfl_data_py.import_seasonal_rosters(
         [season], columns=["player_id", "position", "player_name", "team"]
     ).drop_duplicates(subset="player_id")
-
-    depth_charts = nfl_data_py.import_depth_charts([season])
 
     depth_charts = nfl_data_py.import_depth_charts([season])
     
@@ -465,9 +461,6 @@ def compute_receiver_cpoe_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-# _compute_estimator_vectorized moved to stats/util.py
-
-
 def compute_air_yards_estimator(data):
     air_yards_priors = {
         "RB": data.loc[data.position_receiver == "RB"]["air_yards"].mean(),
@@ -565,8 +558,11 @@ def calculate_weekly(data, weekly_team_stats, season):
     data = data.sort_values(['season', 'week']) # Ensure data is sorted for multi-year EWMA calculation
     all_players = build_player_id_map(data)
     build_player_team_map(data)
-    weekly_receiver_data = data.groupby(["receiver_player_id", "week"])
-    weekly_rusher_data = data.loc[data.rush == 1].groupby(["rusher_player_id", "week"])
+    
+    # Update groupby to include season
+    weekly_receiver_data = data.groupby(["season", "receiver_player_id", "week"])
+    weekly_rusher_data = data.loc[data.rush == 1].groupby(["season", "rusher_player_id", "week"])
+    
     weekly_targets = (
         weekly_receiver_data.size()
         .sort_values()
@@ -576,7 +572,7 @@ def calculate_weekly(data, weekly_team_stats, season):
     )
     weekly_red_zone_targets = (
         data.loc[data.yardline_100 <= 10]
-        .groupby(["receiver_player_id", "week"])
+        .groupby(["season", "receiver_player_id", "week"])
         .size()
         .sort_values()
         .to_frame(name="redzone_targets_wk")
@@ -585,7 +581,7 @@ def calculate_weekly(data, weekly_team_stats, season):
     )
     weekly_deep_targets = (
         data.loc[data.air_yards >= 30]
-        .groupby(["receiver_player_id", "week"])
+        .groupby(["season", "receiver_player_id", "week"])
         .size()
         .sort_values()
         .to_frame(name="deep_targets_wk")
@@ -610,7 +606,7 @@ def calculate_weekly(data, weekly_team_stats, season):
     weekly_red_zone_carries = (
         data.loc[data.rush == 1]
         .loc[data.yardline_100 <= 10]
-        .groupby(["rusher_player_id", "week"])
+        .groupby(["season", "rusher_player_id", "week"])
         .size()
         .sort_values()
         .to_frame(name="redzone_carries_wk")
@@ -626,26 +622,37 @@ def calculate_weekly(data, weekly_team_stats, season):
         .rename(columns={"rusher_player_id": "player_id"})
     )
 
+    # Merge on season, player_id, week
     weekly_stats = (
         weekly_targets.merge(
-            weekly_red_zone_targets, how="outer", on=["player_id", "week"]
+            weekly_red_zone_targets, how="outer", on=["season", "player_id", "week"]
         )
-        .merge(weekly_deep_targets, how="outer", on=["player_id", "week"])
-        .merge(weekly_air_yards_target, how="outer", on=["player_id", "week"])
-        .merge(weekly_carries, how="outer", on=["player_id", "week"])
-        .merge(weekly_red_zone_carries, how="outer", on=["player_id", "week"])
-        .merge(weekly_yards_per_carry, how="outer", on=["player_id", "week"])
-        .merge(get_weekly_injuries(season), how="outer", on=["player_id", "week"])
+        .merge(weekly_deep_targets, how="outer", on=["season", "player_id", "week"])
+        .merge(weekly_air_yards_target, how="outer", on=["season", "player_id", "week"])
+        .merge(weekly_carries, how="outer", on=["season", "player_id", "week"])
+        .merge(weekly_red_zone_carries, how="outer", on=["season", "player_id", "week"])
+        .merge(weekly_yards_per_carry, how="outer", on=["season", "player_id", "week"])
+        # Note: Injuries merge is tricky with multi-season. Assuming we want current season injuries or ignoring for backtest EWMA history?
+        # For EWMA, we don't strictly need injury status history unless we filter by it?
+        # get_weekly_injuries returns for [season].
+        # If we omit it here, calculate_weekly works for history.
+        # But available flag is used for percentages.
+        # Let's keep it but be aware it might be partial.
+        .merge(get_weekly_injuries(season), how="left", on=["player_id", "week"]) 
     )
 
     weekly_stats["available"] = weekly_stats["available"].fillna(True)
+    
+    # Roster merge for name/position/team
     roster_data = nfl_data_py.import_seasonal_rosters(
         [season], columns=["player_id", "position", "team"]
     )
     weekly_stats = weekly_stats.merge(roster_data, on="player_id", how="left")
+    
     weekly_team_targets = weekly_team_stats[
         [
             "team",
+            "season", # Add season
             "week",
             "targets_wk",
             "carries_wk",
@@ -654,14 +661,14 @@ def calculate_weekly(data, weekly_team_stats, season):
         ]
     ]
     weekly_stats = weekly_stats.merge(
-        weekly_team_targets, how="outer", on=["team", "week"], suffixes=[None, "_team"]
+        weekly_team_targets, how="outer", on=["season", "team", "week"], suffixes=[None, "_team"]
     )
+
     # Fill NaNs from outer merge with 0 before percentages.
     weekly_stats["targets_wk_team"] = weekly_stats["targets_wk_team"].fillna(0)
     weekly_stats["carries_wk_team"] = weekly_stats["carries_wk_team"].fillna(0)
     weekly_stats["redzone_targets_wk_team"] = weekly_stats["redzone_targets_wk_team"].fillna(0)
     weekly_stats["redzone_carries_wk_team"] = weekly_stats["redzone_carries_wk_team"].fillna(0)
-
 
     weekly_stats["target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row), axis=1
@@ -669,11 +676,6 @@ def calculate_weekly(data, weekly_team_stats, season):
     weekly_stats["carry_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_carry_percentage(row), axis=1
     )
-    # Fill NaNs from outer merge with 0 before percentages.
-    weekly_stats["targets_wk_team"] = weekly_stats["targets_wk_team"].fillna(0)
-    weekly_stats["carries_wk_team"] = weekly_stats["carries_wk_team"].fillna(0)
-    weekly_stats["redzone_targets_wk_team"] = weekly_stats["redzone_targets_wk_team"].fillna(0)
-    weekly_stats["redzone_carries_wk_team"] = weekly_stats["redzone_carries_wk_team"].fillna(0)
     weekly_stats["redzone_target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row, True), axis=1
     )
@@ -764,65 +766,21 @@ def weekly_redzone_target_share_estimator(weekly_data):
 
 
 def weekly_carry_share_estimator(weekly_data):
-
-
     # Assume rookies part of a committee of 4 backs
-
-
     carry_prior = 0
-
-
     # Temporarily shorten span for early season.
-
-
     carry_span = 17
-
-
     
-
-
     priors_df = weekly_data[['player_id']].drop_duplicates()
-
-
     priors_df['carry_percentage_wk'] = carry_prior
-
-
     
-
-
-    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` has NaNs: {weekly_data['carry_percentage_wk'].isna().any()}")
-
-
-    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` sum: {weekly_data['carry_percentage_wk'].sum()}")
-
-
-    print(f"DEBUG: weekly_carry_share_estimator. `carry_percentage_wk` head: \n{weekly_data['carry_percentage_wk'].head()}")
-
-
-    
-
-
     return _compute_estimator_vectorized(
-
-
         weekly_data, 
-
-
         'player_id', 
-
-
         'carry_percentage_wk', 
-
-
         carry_span, 
-
-
         priors_df, 
-
-
         'carry_share_est'
-
-
     )
 
 

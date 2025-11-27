@@ -415,7 +415,7 @@ def calculate_weekly(data, season):
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values(['season', 'week'])
     targets_weekly = (
-        data.groupby(["posteam", "week"])["receiver_player_id"]
+        data.groupby(["season", "posteam", "week"])["receiver_player_id"]
         .count()
         .sort_values()
         .to_frame(name="targets_wk")
@@ -424,7 +424,7 @@ def calculate_weekly(data, season):
     )
     carries_weekly = (
         data.loc[data.rush == 1]
-        .groupby(["posteam", "week"])["rusher_player_id"]
+        .groupby(["season", "posteam", "week"])["rusher_player_id"]
         .count()
         .sort_values()
         .to_frame(name="carries_wk")
@@ -433,7 +433,7 @@ def calculate_weekly(data, season):
     )
     red_zone_targets_weekly = (
         data.loc[data.yardline_100 <= 10]
-        .groupby(["posteam", "week"])["receiver_player_id"]
+        .groupby(["season", "posteam", "week"])["receiver_player_id"]
         .count()
         .sort_values()
         .to_frame(name="redzone_targets_wk")
@@ -443,7 +443,7 @@ def calculate_weekly(data, season):
     red_zone_carries_weekly = (
         data.loc[data.rush == 1]
         .loc[data.yardline_100 <= 10]
-        .groupby(["posteam", "week"])["rusher_player_id"]
+        .groupby(["season", "posteam", "week"])["rusher_player_id"]
         .count()
         .sort_values()
         .to_frame(name="redzone_carries_wk")
@@ -452,9 +452,9 @@ def calculate_weekly(data, season):
     )
 
     weekly_data = (
-        targets_weekly.merge(carries_weekly, how="outer", on=["team", "week"])
-        .merge(red_zone_targets_weekly, how="outer", on=["team", "week"])
-        .merge(red_zone_carries_weekly, how="outer", on=["team", "week"])
+        targets_weekly.merge(carries_weekly, how="outer", on=["season", "team", "week"])
+        .merge(red_zone_targets_weekly, how="outer", on=["season", "team", "week"])
+        .merge(red_zone_carries_weekly, how="outer", on=["season", "team", "week"])
     )
     if season <= 2019:
         weekly_data["team"] = weekly_data["team"].replace("LV", "OAK")
