@@ -1,113 +1,76 @@
-# Fantasy Football Projections Engine 🏈
+# 🏈 Fantasy Football Projections Engine
 
-**A Monte Carlo Simulation Engine for NFL Fantasy Football.**
+A probabilistic, play-by-play simulation engine for NFL Fantasy Football.
 
-> **Status:** Active / Modernized (Nov 2025)
-> **Tech Stack:** Python 3.10+, Pandas, Scikit-Learn, Poetry, Joblib
+> **Why Simulation?** Most projections give you an average. This engine simulates the game 1,000 times to tell you the **Range of Outcomes** (Ceiling, Floor, and Median).
 
----
-
-## 📖 Executive Summary
-
-Most fantasy football projections provide a single number (e.g., "Josh Allen: 22.4 points"). This engine **simulates the actual game of football**, play-by-play, thousands of times (Monte Carlo).
-
-By simulating game mechanics (down, distance, clock) and using ML models for every decision, we generate a **distribution of outcomes**, capturing:
-*   **Boom/Bust Potential:** Quantify the probability of a player scoring >30 points.
-*   **Correlations:** How a QB's performance organically lifts his WRs.
-*   **Game Scripts:** How blowing out an opponent shifts playcalling to the run.
+![Report Screenshot](https://raw.githubusercontent.com/slisenberger/fantasyFootballProjections/master/docs/report_preview.png) 
+*(Screenshot placeholder - check `projections/v.../report.html`)*
 
 ---
 
-## 🎮 Usage
+## 🚀 Getting Started
 
-### 1. Quick Start
-Run 5 simulations for the current week (defaults to 2024 Week 2):
+### Prerequisites
+*   Python 3.10+
+*   Poetry
+
+### Installation
 ```bash
-poetry run python main.py
+git clone https://github.com/slisenberger/fantasyFootballProjections.git
+cd fantasyFootballProjections
+poetry install
 ```
 
-### 2. Custom Simulation
-Run 100 simulations for a specific past week:
-```bash
-poetry run python main.py --season 2023 --week 5 --simulations 100
-```
-
-### 3. CLI Arguments
-| Argument | Default | Description |
-| :--- | :--- | :--- |
-| `--season` | 2024 | NFL Season year. |
-| `--week` | 2 | Week number (1-18). |
-| `--simulations` | 5 | Number of Monte Carlo runs per game. Higher = more precision. |
-| `--version` | "402" | Label for output files. |
-
----
-
-## 🏃 How to Run Benchmarks
+### Running Projections
+Generate projections for the current week (e.g., 2025 Week 13):
 
 ```bash
-# Run the full suite (approx 5-10 mins)
-poetry run python benchmark.py --simulations 50 --version v403_candidate
+poetry run python main.py project --season 2025 --week 13 --simulations 1000
 ```
 
-This will save results to `benchmarks/results_v403_candidate.json` and a detailed CSV.
+This will produce:
+1.  **HTML Report:** `projections/v416.../week_13/report.html` (Visual rankings & boom/bust charts).
+2.  **CSV Data:** `projections/v416.../week_13/summary.csv` (Raw data).
 
----
+### Running Rest-of-Season (ROS)
+To simulate the rest of the season (from current week to Week 18):
 
-## 🧪 Testing
-
-The project now includes a test harness using `pytest` to ensure code quality and prevent regressions.
-
-*   **Unit Tests:** Located in `tests/test_*.py`, these validate individual components like scoring logic and configuration loading.
-*   **Smoke Tests:** Essential for verifying the end-to-end pipeline functionality with minimal data, ensuring the system runs without crashing.
-
-To run the tests:
 ```bash
-poetry run pytest
+poetry run python main.py project --season 2025 --week 13 --simulations 1000
 ```
+(It automatically runs ROS loops and generates `ros/ros_report.html`).
 
 ---
 
-## 📊 Benchmarking & Calibration
+## 🧠 How It Works
 
-A formal benchmarking process has been established to measure the model's calibration and accuracy. Detailed results, methodology, and ongoing analysis are available in [BENCHMARKS.md](BENCHMARKS.md).
+This isn't just a spreadsheet calculator. It simulates every snap of the game.
 
-**Key Finding:** The current model (v402 baseline) is **significantly over-confident**, meaning its predicted ranges of outcomes are too narrow, even though its average predictions (bias) are accurate. This highlights a need to introduce more simulated variance (e.g., injuries, big plays) into the core game engine.
+*   **Play Calling:** Uses Logistic Regression to decide Run vs. Pass based on down, distance, and score.
+*   **Yardage:** Samples from Kernel Density Estimators (KDEs) to model realistic yardage distributions (including the "Censored Boom" fix for open-field runs).
+*   **Game Script:** Accurately models "Hurry Up" offense (trailing teams play faster) and "Clock Killing" (leading teams play slower).
+*   **Uncertainty:** Stochastic modeling of Injuries (Questionable players have a risk of being benched in the sim).
 
----
-
-## 🏗️ Architecture
-
-*   **`main.py`**: Orchestrator. Handles CLI, data loading, parallel execution (`joblib`), and backtesting.
-*   **`engine/game.py`**: The Physics Engine. Enforces NFL rules (downs, clock, scoring) and manages state. Refactored to use Enums (`PlayType`, `Position`).
-*   **`models/`**: ML Layer.
-    *   `playcall.py`: Logistic Regression for Run/Pass decisions.
-    *   `rushers.py` / `receivers.py`: KDE (Kernel Density Estimation) for yardage distributions.
-*   **`stats/`**: Feature Engineering. Calculates "Talent Estimators" (EWMA) for players and teams.
-*   **`evaluation/`**: Analysis tools.
-    *   `calibration.py`: Implementation of PIT, Reliability diagrams, KS Test, and Bias calculation.
+👉 **[Read the Full Methodology](METHODOLOGY.md)** for a deep dive into the physics and statistics.
 
 ---
 
-## 🗺️ Development Roadmap
+## 📊 Benchmarks (v416)
 
-See [ROADMAP.md](ROADMAP.md) for the detailed feature backlog and future vision.
+We hold ourselves to a "Gold Standard" of calibration.
 
-Key Priorities:
-1.  **Configurable Scoring Rules:** Implement support for various fantasy scoring formats via configuration.
-2.  **Increase Simulation Variance:** Address the model's over-confidence by incorporating more realistic game variability (e.g., mid-game injuries, big play probabilities).
-3.  **Early Season Data Loading Fix:** Resolve issues preventing Week 1 data from being properly processed in backtests.
+*   **RMSE:** ~15.0
+*   **Bias:** +0.06 (Nearly zero mean error)
+*   **Coverage (90% Interval):** ~65% (Target 90% - still refining tails)
+*   **Fail High (Missed Booms):** 25.9% (Best in class)
 
 ---
 
-## 🛠️ Setup & Development
+## 🛠️ Contributing
 
-1.  **Install:**
-    ```bash
-    git clone <repo>
-    pipx install poetry
-    poetry install
-    ```
-2.  **Format Code:**
-    ```bash
-    poetry run ruff format .
-    ```
+1.  Check `ROADMAP.md` for upcoming features.
+2.  Run tests: `poetry run python -m unittest discover tests`
+3.  Submit PRs against `master`.
+
+---
