@@ -1,0 +1,44 @@
+name: "Standard Half-PPR"
+
+# Passing
+pass_td: 4.0
+pass_yard: 0.04
+intercept: -1.5  # Updated to match current settings.py default
+sack: 0.0
+
+# Rushing
+rush_td: 6.0
+rush_yard: 0.1
+fumble_lost: -2.0
+
+# Receiving
+rec_td: 6.0
+rec_yard: 0.1
+reception: 0.5  # Half PPR
+
+# Misc
+two_pt_conv: 2.0
+ret_td: 6.0
+
+# Kicking
+fg_0_39: 3.0
+fg_40_49: 4.0
+fg_50_plus: 5.0
+pat_made: 1.0
+
+# Defense
+def_sack: 1.0
+def_int: 2.0
+def_fumble_rec: 2.0
+def_safety: 2.0
+def_td: 6.0
+def_block: 2.0
+
+# Defense Points Allowed
+pa_0: 10.0
+pa_1_6: 7.0
+pa_7_13: 4.0
+pa_14_20: 1.0
+pa_21_27: 0.0
+pa_28_34: -1.0
+pa_35_plus: -4.0

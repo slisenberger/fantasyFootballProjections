@@ -8,6 +8,11 @@ projections/
 projections_*.csv
 output/
 
+# Generated Stats (Intermediate artifacts)
+offense_stats.csv
+team_stats.csv
+weekly_stats.csv
+
 # Local dev
 .gemini/
 .idea/

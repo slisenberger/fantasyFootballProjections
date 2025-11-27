@@ -9,6 +9,9 @@ def calculate_pit(simulated_scores: np.array, actual_score: float) -> float:
     Calculates the Probability Integral Transform (PIT) value.
     PIT = F(y), where F is the CDF of the predicted distribution.
     """
+    # Filter out NaNs
+    simulated_scores = simulated_scores[~np.isnan(simulated_scores)]
+    
     if len(simulated_scores) == 0:
         return np.nan
     
@@ -52,7 +55,7 @@ def calculate_metrics(results_df: pd.DataFrame) -> dict:
         upper = 1 - lower
         
         in_interval = df.apply(
-            lambda row: np.quantile(row['simulations'], lower) <= row['actual'] <= np.quantile(row['simulations'], upper),
+            lambda row: np.nanquantile(row['simulations'], lower) <= row['actual'] <= np.nanquantile(row['simulations'], upper),
             axis=1
         )
         return in_interval.mean()
@@ -60,6 +63,17 @@ def calculate_metrics(results_df: pd.DataFrame) -> dict:
     coverage_50 = get_coverage(results_df, 0.50)
     coverage_90 = get_coverage(results_df, 0.90)
     
+    # Failure Directionality (for 90% interval)
+    # Fail Low: Actual < 5th percentile (Model Over-predicted)
+    # Fail High: Actual > 95th percentile (Model Under-predicted / Missed Boom)
+    fail_low_pct = results_df.apply(
+        lambda row: row['actual'] < np.nanquantile(row['simulations'], 0.05), axis=1
+    ).mean()
+    
+    fail_high_pct = results_df.apply(
+        lambda row: row['actual'] > np.nanquantile(row['simulations'], 0.95), axis=1
+    ).mean()
+
     # 4. RMSE (Point Estimate Accuracy)
     rmse = np.sqrt(np.mean((results_df['actual'] - results_df['mean_projection'])**2))
     
@@ -67,11 +81,27 @@ def calculate_metrics(results_df: pd.DataFrame) -> dict:
         "ks_stat": ks_stat,
         "ks_p_value": p_value,
         "bias": bias,
-        "coverage_50": coverage_50, # Expected: 0.50
-        "coverage_90": coverage_90, # Expected: 0.90
+        "coverage_50": coverage_50,
+        "coverage_90": coverage_90,
+        "fail_low_pct": fail_low_pct,   # Actual < Lower Bound (Model too high)
+        "fail_high_pct": fail_high_pct, # Actual > Upper Bound (Model too low)
         "rmse": rmse,
-        "n_samples": len(results_df)
+        "n_samples": len(results_df),
+        "pit_histogram": get_ascii_histogram(pit_values)
     }
+
+def get_ascii_histogram(data, bins=10, width=50):
+    """Generates a simple ASCII histogram for CLI visualization."""
+    counts, bin_edges = np.histogram(data, bins=bins, range=(0, 1))
+    max_count = counts.max()
+    
+    hist_str = "\n  PIT Distribution (0.0 = Over-predicted, 1.0 = Under-predicted):\n"
+    for i, count in enumerate(counts):
+        bar_len = int((count / max_count) * width) if max_count > 0 else 0
+        bar = "#" * bar_len
+        label = f"{bin_edges[i]:.1f}-{bin_edges[i+1]:.1f}"
+        hist_str += f"  {label} | {bar} ({count})\n"
+    return hist_str
 
 def evaluate_calibration(results_df: pd.DataFrame):
     """
