@@ -492,10 +492,6 @@ class GameState:
 
     def game_end(self):
         self.game_over = True
-        # print(
-        #     "%s %s - %s %s" 
-        #     % (self.home_team, self.home_score, self.away_team, self.away_score)
-        # )
 
     def turnover_on_downs(self):
         self.change_possession()
@@ -812,6 +808,11 @@ class GameState:
 
 
 def compute_odds_ratio(p1, p2, lg):
+    epsilon = 1e-4
+    p1 = max(epsilon, min(1 - epsilon, p1))
+    p2 = max(epsilon, min(1 - epsilon, p2))
+    lg = max(epsilon, min(1 - epsilon, lg))
+
     odds_ratio_p1 = p1 / (1 - p1)
     odds_ratio_p2 = p2 / (1 - p2)
     odds_ratio_lg = lg / (1 - lg)
