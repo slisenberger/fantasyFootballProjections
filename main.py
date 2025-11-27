@@ -301,7 +301,7 @@ def project_ros(pbp_data, models, config):
     cur_week = config.runtime.week
     version = config.runtime.version
     
-    for week in range(cur_week, cur_week + 1):
+    for week in range(cur_week, 19):
         print("Running projections on %s Week %s" % (season, week))
         projection_data = project_week(
             pbp_data, models, season, week, config
@@ -353,13 +353,17 @@ def project_ros(pbp_data, models, config):
         ["player_id", "player_name", "team", "position", "ros_total"]
     ].to_csv(os.path.join(base_dir, "total.csv"))
     
-    ros_mean.merge(roster_data, on="player_id", how="outer")[
+    ros_mean_df = ros_mean.merge(roster_data, on="player_id", how="outer")[
         ["player_id", "player_name", "team", "position", "ros_mean"]
-    ].to_csv(os.path.join(base_dir, "mean.csv"))
+    ]
+    ros_mean_df.to_csv(os.path.join(base_dir, "mean.csv"))
     
     playoffs_mean.merge(roster_data, on="player_id", how="outer")[
         ["player_id", "player_name", "team", "position", "playoffs_mean"]
     ].to_csv(os.path.join(base_dir, "playoffs.csv"))
+    
+    # Generate ROS Report
+    html_generator.generate_ros_report(ros_mean_df, season, cur_week, base_dir)
 
 
 def get_models():
