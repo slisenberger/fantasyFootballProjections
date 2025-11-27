@@ -1,3 +1,4 @@
+import random
 import argparse
 import warnings
 import os
@@ -136,6 +137,29 @@ def project_week(data, models, season, week, config):
 
 
 def project_game(models, player_stats, team_stats, home, away, week, config):
+    # Apply Probabilistic Injury Logic
+    # Logic: Q players have 25% chance of being scratch (removed), 
+    # and if active, 20% volume reduction (limited/decoy risk).
+    
+    # We must work on a copy to avoid modifying the master DF for other sims
+    player_stats = player_stats.copy()
+    
+    q_players = player_stats[player_stats['status'] == 'Questionable']
+    drop_indices = []
+    
+    for idx, row in q_players.iterrows():
+        if random.random() < 0.25:
+            # Simulating Inactive
+            drop_indices.append(idx)
+        else:
+            # Simulating Active but Limited
+            # Reduce volume share by 20%
+            player_stats.at[idx, 'target_share_est'] *= 0.8
+            player_stats.at[idx, 'carry_share_est'] *= 0.8
+            
+    if drop_indices:
+        player_stats = player_stats.drop(drop_indices)
+
     home_player_stats = player_stats[player_stats["team"].isin([home])]
     away_player_stats = player_stats[player_stats["team"].isin([away])]
     home_team_stats = team_stats[team_stats["team"].isin([home])]
