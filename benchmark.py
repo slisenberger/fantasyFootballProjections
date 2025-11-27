@@ -3,6 +3,7 @@ import pandas as pd
 import json
 import os
 import time
+import nfl_data_py
 from main import get_models
 from data import loader
 from stats import injuries
@@ -90,6 +91,12 @@ def run_benchmark(simulations=50, version="benchmark"):
 
     full_df = pd.concat(all_results)
     
+    # Add Position Metadata
+    roster = nfl_data_py.import_seasonal_rosters(
+        list(years_needed), columns=['player_id', 'position']
+    ).drop_duplicates(subset='player_id')
+    full_df = full_df.merge(roster, on='player_id', how='left')
+    
     # Overall Metrics
     print("\n--- OVERALL RESULTS ---")
     evaluated_df = calibration.evaluate_calibration(full_df)
@@ -109,6 +116,19 @@ def run_benchmark(simulations=50, version="benchmark"):
     
     print(json.dumps(overall_metrics, indent=4))
     
+    # Position Metrics
+    position_metrics = {}
+    print("\n--- POSITION RESULTS ---")
+    for pos in ["QB", "RB", "WR", "TE", "K"]: 
+        pos_df = evaluated_df[evaluated_df['position'] == pos]
+        if not pos_df.empty:
+            print(f"\n{pos} (n={len(pos_df)}):")
+            metrics = calibration.calculate_metrics(pos_df)
+            # Strip histogram for cleaner JSON log
+            if 'pit_histogram' in metrics: del metrics['pit_histogram']
+            position_metrics[pos] = metrics
+            print(f"  RMSE: {metrics['rmse']:.2f} | Bias: {metrics['bias']:.2f} | Fail High: {metrics['fail_high_pct']:.1%}")
+
     # Segmented Metrics
     segment_metrics = {}
     print("\n--- SEGMENTED RESULTS ---")
@@ -117,6 +137,7 @@ def run_benchmark(simulations=50, version="benchmark"):
         if not seg_df.empty:
             print(f"\n{segment} Season (n={len(seg_df)}):")
             metrics = calibration.calculate_metrics(seg_df)
+            if 'pit_histogram' in metrics: del metrics['pit_histogram']
             segment_metrics[segment] = metrics
             print(json.dumps(metrics, indent=4))
     
@@ -124,6 +145,7 @@ def run_benchmark(simulations=50, version="benchmark"):
     os.makedirs("benchmarks", exist_ok=True)
     results = {
         "overall": overall_metrics,
+        "positions": position_metrics,
         "segments": segment_metrics
     }
     
