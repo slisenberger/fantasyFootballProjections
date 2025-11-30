@@ -42,7 +42,15 @@ This plan transforms the project's documentation from a collection of stale mark
     *   Must include `Args`, `Returns`, and `Raises` sections.
     *   **Crucial:** The `Args` section must describe the *shape* of DataFrames if a DF is passed.
 *   **Enforcement (As-We-Go):** Implement a `pre-commit` hook to run `ruff --select D` (or `pydocstyle`) on staged files. This ensures new/modified code is compliant.
-*   **Status:** **[In Progress]** (Engine/GameState & Player/Team calculate methods)
+*   **Status:** **[Done]**
+
+### Step 3.2: Migration of Legacy Docs
+*   **Action:** Refactor existing MD files into the new structure.
+*   **Details:**
+    *   `hypotheses.md` -> `docs/architecture/hypotheses_log.md`
+    *   `ROADMAP.md` -> `docs/project/roadmap.md`
+    *   `BENCHMARKS.md` -> `docs/guides/benchmarking.md`
+*   **Status:** **[Done]**
 
 ---
 
