@@ -8,12 +8,19 @@
 
 ### Findings (from `diagnose_qb_fail_high.py`)
 *   **Fail High Population:** ~13% of QBs fail high by >10 points.
-*   **Primary Driver:** **Passing TDs** (Corr -0.31) and **Big Pass Plays** (Corr -0.26).
-    *   Lamar Jackson (5 TDs), Tom Brady (3 Pass TDs + 1 Rush TD), Patrick Mahomes (5 TDs).
-    *   Max Pass > 50 yards is common in boom weeks.
-*   **Secondary Driver:** **Rushing Efficiency/TDs** (Corr -0.23).
-    *   Daniel Jones (91 yds, 2 TDs), Taysom Hill (63 yds, 2 TDs).
-*   **Conclusion:** The model under-predicts the **variance of TD production** and the likelihood of **explosive plays** (both passing and rushing).
+*   **Comparison (Fail High vs Normal):**
+    *   **Total TDs:** 3.07 vs 1.16 (**+163%**). The biggest differentiator.
+    *   **Rush TDs:** 0.57 vs 0.10 (**+447%**).
+    *   **Pass TDs:** 2.50 vs 1.06 (**+135%**).
+    *   **Pass Yards:** 279 vs 187 (+50%).
+    *   **Max Rush:** 12.4 vs 7.2 (+71%).
+*   **Correlation with Error:** `pass_tds` (-0.63) and `rush_tds` (-0.42).
+*   **Conclusion:** The model severely under-predicts **multi-TD games**. It treats TDs as independent rare events, missing the "Defensive Collapse" or "Hot Hand" scenarios where TDs bunch together.
+
+### Hypothesis Refined: Defensive Variance
+*   **Observation:** We use mean estimators (`defense_pass_oe_est`) for every simulation. We assume the defense plays to its average every game.
+*   **Reality:** Defenses have high variance games (bust coverages, injuries).
+*   **Proposed Fix:** Sample defensive strength (`defense_pass_oe`) from a distribution at the start of each game simulation, rather than using the point estimate. This will create "boom" conditions for the offense in a subset of simulations.
 
 ### Step 1.1: Quantitative Breakdown (`diagnose_qb_fail_high.py`)
 *   **Input:** `benchmarks/details_v444_gfi.csv` (latest benchmark).

@@ -27,7 +27,10 @@ def diagnose():
     
     results = []
     
-    for idx, row in fail_high.iterrows():
+    # Analyze ALL QBs, not just fail high, to allow comparison
+    print(f"Analyzing {len(qbs)} QBs...")
+    
+    for idx, row in qbs.iterrows():
         pid = row['player_id']
         season = row['season']
         week = row['week']
@@ -42,7 +45,10 @@ def diagnose():
         rush_tds = game_pbp[(game_pbp['rusher_player_id'] == pid) & (game_pbp['rush_touchdown'] == 1)].shape[0]
         
         max_pass = game_pbp[game_pbp['passer_player_id'] == pid]['passing_yards'].max()
+        if pd.isna(max_pass): max_pass = 0
+        
         max_rush = game_pbp[game_pbp['rusher_player_id'] == pid]['rushing_yards'].max()
+        if pd.isna(max_rush): max_rush = 0
         
         results.append({
             'player_name': id_map.get(pid, pid),
@@ -51,6 +57,7 @@ def diagnose():
             'actual': row['actual'],
             'proj': row['mean_projection'],
             'error': row['error'],
+            'is_fail_high': row['error'] < -10,
             'pass_yds': pass_yds,
             'pass_tds': pass_tds,
             'rush_yds': rush_yds,
@@ -61,15 +68,28 @@ def diagnose():
         })
         
     results_df = pd.DataFrame(results)
-    if not results_df.empty:
-        print("\n--- Top 20 Fail High QBs Analysis ---")
-        print(results_df.sort_values('error').head(20).to_string(index=False))
+    
+    fail_high_df = results_df[results_df['is_fail_high']]
+    normal_df = results_df[~results_df['is_fail_high']]
+    
+    if not fail_high_df.empty:
+        print("\n--- Top 10 Fail High Examples ---")
+        print(fail_high_df.sort_values('error').head(10)[['player_name', 'actual', 'proj', 'error', 'total_tds', 'max_pass']].to_string(index=False))
         
-        print("\n--- Correlation Analysis (Negative Corr = Higher Stat contributes to Negative Error) ---")
-        print(results_df[['error', 'pass_yds', 'pass_tds', 'rush_yds', 'rush_tds', 'max_pass', 'max_rush']].corr()['error'])
+        print("\n--- Population Comparison (Average) ---")
+        comparison = pd.DataFrame({
+            'Fail High (n={})'.format(len(fail_high_df)): fail_high_df.mean(numeric_only=True),
+            'Normal (n={})'.format(len(normal_df)): normal_df.mean(numeric_only=True)
+        })
+        # Calculate Delta %
+        comparison['Delta %'] = ((comparison.iloc[:, 0] - comparison.iloc[:, 1]) / comparison.iloc[:, 1]) * 100
+        print(comparison.drop(['season', 'week', 'is_fail_high', 'error', 'actual', 'proj']).round(2))
         
-        print("\n--- Average Stats of Fail High QBs ---")
-        print(results_df.mean(numeric_only=True))
+        print("\n--- Correlation Analysis (All QBs) ---")
+        # Correlation of stats with Error (negative error = fail high)
+        # Negative correlation means higher stat -> more negative error (more likely to fail high)
+        print(results_df[['error', 'pass_yds', 'pass_tds', 'rush_yds', 'rush_tds', 'max_pass', 'max_rush']].corr()['error'].sort_values())
+
     else:
         print("No Fail High QBs found.")
 
