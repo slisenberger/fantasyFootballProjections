@@ -5,35 +5,35 @@ from stats.util import _compute_estimator_vectorized
 # Helper functions to compute EWMA estimators for team stats.
 # These must be defined before `calculate` calls them.
 
-def compute_offense_poe_estimator(data):
+def compute_offense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     poe_prior = 0
     poe_span = 500
     priors_df = data[['posteam']].drop_duplicates().copy()
     priors_df['pass_oe'] = poe_prior
     return _compute_estimator_vectorized(data, 'posteam', 'pass_oe', poe_span, priors_df, 'offense_pass_oe_est', time_col='week').rename(columns={'posteam': 'team'})
 
-def compute_defense_poe_estimator(data):
+def compute_defense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     poe_prior = 0
     poe_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
     priors_df['pass_oe'] = poe_prior
     return _compute_estimator_vectorized(data, 'defteam', 'pass_oe', poe_span, priors_df, 'defense_pass_oe_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_defense_cpoe_estimator(data):
+def compute_defense_cpoe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     cpoe_prior = 0
     cpoe_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
     priors_df['cpoe'] = cpoe_prior
     return _compute_estimator_vectorized(data, 'defteam', 'cpoe', cpoe_span, priors_df, 'defense_cpoe_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_defense_yac_estimator(data):
+def compute_defense_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
     yac_prior = data["yards_after_catch"].mean()
     yac_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
     priors_df['yards_after_catch'] = yac_prior
     return _compute_estimator_vectorized(data, 'defteam', 'yards_after_catch', yac_span, priors_df, 'defense_yac_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_defense_ypc_estimator(data):
+def compute_defense_ypc_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data_filtered = data.loc[data.rush == 1].copy()
     ypc_prior = data_filtered["rushing_yards"].mean()
     ypc_span = 500
@@ -41,7 +41,7 @@ def compute_defense_ypc_estimator(data):
     priors_df['rushing_yards'] = ypc_prior
     return _compute_estimator_vectorized(data_filtered, 'defteam', 'rushing_yards', ypc_span, priors_df, 'defense_ypc_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_defense_int_rate_estimator(data):
+def compute_defense_int_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     pass_plays = data.loc[data["pass"] == 1].copy()
     int_prior = (pass_plays.loc[pass_plays.interception == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     int_span = 1000
@@ -49,7 +49,7 @@ def compute_defense_int_rate_estimator(data):
     priors_df['interception'] = int_prior
     return _compute_estimator_vectorized(pass_plays, 'defteam', 'interception', int_span, priors_df, 'defense_int_rate_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_defense_sack_rate_estimator(data):
+def compute_defense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     pass_plays = data.loc[data["pass"] == 1].copy()
     sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     sack_span = 1000
@@ -57,7 +57,7 @@ def compute_defense_sack_rate_estimator(data):
     priors_df['sack'] = sack_prior
     return _compute_estimator_vectorized(pass_plays, 'defteam', 'sack', sack_span, priors_df, 'defense_sack_rate_est', time_col='week').rename(columns={'defteam': 'team'})
 
-def compute_offense_sack_rate_estimator(data):
+def compute_offense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     pass_plays = data.loc[data["pass"] == 1].copy()
     sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     sack_span = 1000
@@ -67,7 +67,7 @@ def compute_offense_sack_rate_estimator(data):
 
 
 # Calculate team statistics that are used to determine tendencies.
-def calculate(data, season):
+def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run"]))]
     data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
 

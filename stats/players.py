@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+from typing import Dict, Any
 from data import nfl_client as nfl_data_py
 from statsmodels.formula.api import mixedlm
 from collections import defaultdict
@@ -14,7 +15,7 @@ receiver_span = 150
 rusher_span = 150
 
 
-def calculate(data, team_stats, season, week):
+def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: int) -> pd.DataFrame:
     data = data.copy() # Ensure data is a copy to prevent SettingWithCopyWarning
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
@@ -348,7 +349,7 @@ def calculate(data, team_stats, season, week):
     return offense_stats
 
 
-def estimate_cpoe_attribution(data):
+def estimate_cpoe_attribution(data: pd.DataFrame) -> None:
     data["group"] = 1
     data = data.loc[~data.cpoe.isnull()]
     vcf = {
@@ -361,7 +362,7 @@ def estimate_cpoe_attribution(data):
     print(mdf.random_effects)
 
 
-def compute_cpoe_estimator(data):
+def compute_cpoe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     cpoe_prior = 0
     priors_df = data[['passer_player_id']].drop_duplicates()
     priors_df['cpoe'] = cpoe_prior
@@ -376,7 +377,7 @@ def compute_cpoe_estimator(data):
     ).rename(columns={'passer_player_id': 'player_id'})
 
 
-def compute_scramble_rate_estimator(data):
+def compute_scramble_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data = data.loc[data["pass"] == 1]
     scramble_prior = data.loc[data.qb_scramble == 1].shape[0] / data.shape[0] if not data.empty else 0
 
@@ -393,7 +394,7 @@ def compute_scramble_rate_estimator(data):
     ).rename(columns={'passer_id': 'player_id'})
 
 
-def compute_big_carry_rate_estimator(data):
+def compute_big_carry_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     # Only use rushes, avoid QB scrambles.
     data = data.loc[data["rush"] == 1].copy()
     data.loc[data.rushing_yards >= 10, "big_carry"] = 1
@@ -414,7 +415,7 @@ def compute_big_carry_rate_estimator(data):
     ).rename(columns={'rusher_player_id': 'player_id'})
 
 
-def compute_deep_target_rate_estimator(data):
+def compute_deep_target_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data = data.copy()
     data.loc[data.air_yards >= 30, "deep_target"] = 1
     data["deep_target"].fillna(0, inplace=True)
@@ -433,7 +434,7 @@ def compute_deep_target_rate_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def compute_yards_per_scramble_estimator(data):
+def compute_yards_per_scramble_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data = data.loc[data["qb_scramble"] == 1]
     scramble_prior = data["rushing_yards"].mean()
     
@@ -450,7 +451,7 @@ def compute_yards_per_scramble_estimator(data):
     ).rename(columns={'passer_id': 'player_id'})
 
 
-def compute_receiver_cpoe_estimator(data):
+def compute_receiver_cpoe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     cpoe_prior = 0
     priors_df = data[['receiver_player_id']].drop_duplicates()
     priors_df['cpoe'] = cpoe_prior
@@ -465,7 +466,7 @@ def compute_receiver_cpoe_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def compute_air_yards_estimator(data):
+def compute_air_yards_estimator(data: pd.DataFrame) -> pd.DataFrame:
     air_yards_priors = {
         "RB": data.loc[data.position_receiver == "RB"]["air_yards"].mean(),
         "WR": data.loc[data.position_receiver == "WR"]["air_yards"].mean(),
@@ -504,7 +505,7 @@ def compute_air_yards_estimator(data):
     return res.rename(columns={'receiver_player_id': 'player_id'})
 
 
-def compute_ypc_estimator(data):
+def compute_ypc_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data = data.loc[data.rush == 1]
     ypc_prior = data["rushing_yards"].mean()
     
@@ -521,7 +522,7 @@ def compute_ypc_estimator(data):
     ).rename(columns={'rusher_player_id': 'player_id'})
 
 
-def compute_ypc_middle_estimator(data):
+def compute_ypc_middle_estimator(data: pd.DataFrame) -> pd.DataFrame:
     data = data.loc[data.rush == 1 & data.run_gap.isin(["guard", "tackle"])]
     ypc_prior = data["rushing_yards"].mean()
     
@@ -539,15 +540,15 @@ def compute_ypc_middle_estimator(data):
 
 
 # Use an ewma with a bias to estimate a player's chance of receiving checkdowns.
-def checkdown_estimator(data):
+def checkdown_estimator(data: pd.DataFrame) -> None:
     pass
 
 
-def compute_big_carry_estimator(data):
+def compute_big_carry_estimator(data: pd.DataFrame) -> None:
     pass
 
 
-def compute_yac_estimator(data):
+def compute_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
     yac_priors = {
         "RB": data.loc[data.position_receiver == "RB"]["yards_after_catch"].mean(),
         "WR": data.loc[data.position_receiver == "WR"]["yards_after_catch"].mean(),
@@ -555,7 +556,7 @@ def compute_yac_estimator(data):
         "ALL": data["yards_after_catch"].mean(),
     }
 
-    def get_prior(pos):
+    def get_prior(pos: str) -> float:
         return yac_priors.get(pos, yac_priors["ALL"])
 
     priors_df = data[['receiver_player_id', 'position_receiver']].drop_duplicates('receiver_player_id')
@@ -571,7 +572,7 @@ def compute_yac_estimator(data):
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def calculate_weekly(data, weekly_team_stats, season):
+def calculate_weekly(data: pd.DataFrame, weekly_team_stats: pd.DataFrame, season: int) -> pd.DataFrame:
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values(['season', 'week']) # Ensure data is sorted for multi-year EWMA calculation
     all_players = build_player_id_map(data)
@@ -708,29 +709,29 @@ def calculate_weekly(data, weekly_team_stats, season):
     return weekly_stats
 
 
-def compute_target_percentage(row, redzone=False):
+def compute_target_percentage(row: pd.Series, redzone: bool = False) -> float:
     player_metric = "redzone_targets_wk" if redzone else "targets_wk"
     team_metric = "redzone_targets_wk_team" if redzone else "targets_wk_team"
     if row["available"]:
         if row[team_metric] == 0:
-            return 0
+            return 0.0
         return row[player_metric] / row[team_metric]
     else:
         return np.nan
 
 
-def compute_carry_percentage(row, redzone=False):
+def compute_carry_percentage(row: pd.Series, redzone: bool = False) -> float:
     player_metric = "redzone_carries_wk" if redzone else "carries_wk"
     team_metric = "redzone_carries_wk_team" if redzone else "carries_wk_team"
     if row["available"]:
         if row[team_metric] == 0:
-            return 0
+            return 0.0
         return row[player_metric] / row[team_metric]
     else:
         return np.nan
 
 
-def get_weekly_injuries(season):
+def get_weekly_injuries(season: int) -> pd.DataFrame:
     not_injured = ["Questionable"]
     all_injuries = injuries.load_historical_data([season])
     
@@ -745,7 +746,7 @@ def get_weekly_injuries(season):
     return all_injuries[["week", "player_id", "available"]]
 
 
-def weekly_target_share_estimator(weekly_data):
+def weekly_target_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
     # assume shared 1/8th
     target_prior = 0
     # Temporarily shorten span for early season.
@@ -764,7 +765,7 @@ def weekly_target_share_estimator(weekly_data):
     )
 
 
-def weekly_redzone_target_share_estimator(weekly_data):
+def weekly_redzone_target_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
     # assume shared 1/8th
     target_prior = 0
     # Temporarily shorten span for early season.
@@ -783,7 +784,7 @@ def weekly_redzone_target_share_estimator(weekly_data):
     )
 
 
-def weekly_carry_share_estimator(weekly_data):
+def weekly_carry_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
     # Assume rookies part of a committee of 4 backs
     carry_prior = 0
     # Temporarily shorten span for early season.
@@ -802,7 +803,7 @@ def weekly_carry_share_estimator(weekly_data):
     )
 
 
-def weekly_redzone_carry_share_estimator(weekly_data):
+def weekly_redzone_carry_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
     # Assume part of a committee of 4 backs
     carry_prior = 0
     # Temporarily shorten span for early season.
@@ -821,7 +822,7 @@ def weekly_redzone_carry_share_estimator(weekly_data):
     )
 
 
-def build_player_id_map(data):
+def build_player_id_map(data: pd.DataFrame) -> Dict[str, str]:
     # Vectorized approach
     passers = data[["passer_player_id", "passer_player_name"]].rename(
         columns={"passer_player_id": "player_id", "passer_player_name": "player_name"}
@@ -843,7 +844,7 @@ def build_player_id_map(data):
     return defaultdict(lambda: "Unknown", zip(all_players_df.player_id, all_players_df.player_name))
 
 
-def build_player_team_map(data):
+def build_player_team_map(data: pd.DataFrame) -> Dict[str, str]:
     # Vectorized approach
     cols = ["posteam"]
     passers = data[["passer_player_id"] + cols].rename(columns={"passer_player_id": "player_id"})

@@ -1,17 +1,18 @@
 import requests
 import json
 import pandas as pd
+from typing import List, Dict, Optional, Tuple
 from data import nfl_client as nfl_data_py
 
 INJURY_API_URL = "https://api.myfantasyleague.com/%s/export?TYPE=injuries&W=%s&JSON=1"
 
-cached_data = {}
-cached_inj_data = {}
+cached_data: Dict[int, pd.DataFrame] = {}
+cached_inj_data: Dict[Tuple[int, int], pd.DataFrame] = {}
 
 
 # Returns live injury data from the MFL Fantasy API. Updated regularly, best for future
 # projections.
-def get_injury_data(season, week):
+def get_injury_data(season: int, week: int) -> Optional[pd.DataFrame]:
     if week <= 0:
         return None
     if tuple([season, week]) in cached_inj_data:
@@ -38,10 +39,7 @@ def get_injury_data(season, week):
         return get_injury_data(season, week - 1)
 
 
-9
-
-
-def get_season_injury_data(season):
+def get_season_injury_data(season: int) -> Optional[pd.DataFrame]:
     if season < 2016:
         print("Injury data not available before 2016")
         return None
@@ -54,7 +52,7 @@ def get_season_injury_data(season):
         return pd.DataFrame()
 
 
-def clean_and_save_data(years=[]):
+def clean_and_save_data(years: List[int] = []) -> None:
     # Default to the most recent year.
     if not years:
         years = [2024]
@@ -66,7 +64,7 @@ def clean_and_save_data(years=[]):
             )
 
 
-def load_historical_data(years):
+def load_historical_data(years: List[int]) -> pd.DataFrame:
     data = pd.DataFrame()
     for i in years:
         if i in cached_data:

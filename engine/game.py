@@ -1,7 +1,7 @@
 import pandas as pd
 import random
 from collections import defaultdict
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 from enums import PlayType, Position
 from settings import ScoringSettings
 import pandas as pd
@@ -149,12 +149,12 @@ class GameState:
 
         self.fantasy_points = defaultdict(float)
 
-    def _get_sample(self, samples):
+    def _get_sample(self, samples: Any) -> float:
         """Fast random access from pre-calculated buffer."""
         # random.choice on numpy array is fast enough for our needs compared to KDE tree traversal
         return random.choice(samples)
 
-    def play_game(self):
+    def play_game(self) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
         self.opening_kickoff()
         while not self.game_over:
             self.advance_snap()
@@ -167,7 +167,7 @@ class GameState:
         )
         return self.fantasy_points, self.play_log
 
-    def get_defense_score_points(self, score):
+    def get_defense_score_points(self, score: int) -> float:
         if score == 0:
             return self.rules.pa_0
         elif score < 7:
@@ -183,7 +183,7 @@ class GameState:
         else:
             return self.rules.pa_35_plus
 
-    def change_possession(self):
+    def change_possession(self) -> None:
         if self.in_overtime:
             self.ot_possession_count += 1
             
@@ -192,7 +192,7 @@ class GameState:
         else:
             self.posteam = self.home_team
 
-    def opening_kickoff(self):
+    def opening_kickoff(self) -> None:
         self.down = 1
         self.quarter = 1
         self.posteam = random.choice([self.home_team, self.away_team])
@@ -201,23 +201,23 @@ class GameState:
         )
         self.yard_line = 75
 
-    def start_overtime(self):
+    def start_overtime(self) -> None:
         self.in_overtime = True
         # self.quarter will be incremented to 5 in advance_clock immediately after this returns
         self.posteam = random.choice([self.home_team, self.away_team])
         self.yard_line = 75
         self.first_down()
 
-    def kickoff(self):
+    def kickoff(self) -> None:
         self.change_possession()
         self.yard_line = 75
         self.first_down()
 
-    def advance_snap(self):
+    def advance_snap(self) -> None:
         playcall = self.choose_playcall()
-        is_complete = False
-        yards = 0
-        air_yards = 0
+        is_complete = 0
+        yards = 0.0
+        air_yards = 0.0
         td = False
         sack = False
         interception = False
@@ -280,13 +280,13 @@ class GameState:
                 if target:
                     target_id = target["player_id"]
                     air_yards = self.compute_air_yards(target)
-                    is_complete = not interception and self.is_complete(air_yards, target)
+                    is_complete = int(not interception and self.is_complete(air_yards, target))
 
                     if is_complete:
                         yac = self.compute_yac(target)
                         yards = air_yards + yac
                 else:
-                    is_complete = False
+                    is_complete = 0
 
         if playcall == PlayType.PUNT:
             self.punt()

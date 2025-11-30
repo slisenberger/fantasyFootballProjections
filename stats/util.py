@@ -1,6 +1,14 @@
 import pandas as pd
 
-def _compute_estimator_vectorized(data, group_col, target_col, span, priors_df, result_col_name, time_col='week'):
+def _compute_estimator_vectorized(
+    data: pd.DataFrame, 
+    group_col: str, 
+    target_col: str, 
+    span: int, 
+    priors_df: pd.DataFrame, 
+    result_col_name: str, 
+    time_col: str = 'week'
+) -> pd.DataFrame:
     """
     Vectorized calculation of EWMA with prior seeding.
     Ensures data is sorted by time before calculation.

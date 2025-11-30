@@ -3,7 +3,7 @@ import numpy as np
 from data import loader
 from settings import AppConfig
 
-def analyze_clock_runoff():
+def analyze_clock_runoff() -> None:
     print("Loading data...")
     # Load 2023 data for analysis
     data = loader.load_data([2023, 2022])
@@ -41,14 +41,14 @@ def analyze_clock_runoff():
     data = data.loc[(data.runoff > 0) & (data.runoff < 100)]
     
     # Buckets
-    def get_time_bucket(seconds):
+    def get_time_bucket(seconds: float) -> str:
         if seconds > 300: return 'high' # > 5 min
         if seconds > 120: return 'mid'  # 2-5 min
         return 'low' # < 2 min
     
     data['time_bucket'] = data['quarter_seconds_remaining'].apply(get_time_bucket)
     
-    def get_score_bucket(diff):
+    def get_score_bucket(diff: float) -> str:
         if diff >= 9: return 'leading_big'
         if diff > 0: return 'leading_close'
         if diff == 0: return 'tied'
@@ -61,7 +61,7 @@ def analyze_clock_runoff():
     # Stopped Clock: Incomplete pass, Out of bounds
     # Running Clock: Run (in bounds), Complete pass (in bounds), Sack
     
-    def get_clock_status(row):
+    def get_clock_status(row: pd.Series) -> str:
         if row['play_type'] == 'pass':
             if row['incomplete_pass'] == 1: return 'stopped'
             # interception?
@@ -79,12 +79,12 @@ def analyze_clock_runoff():
     # Improve: check for 'out_of_bounds' if available.
     
     # Refine play_type column for grouping
-    def get_detailed_play_type(row):
+    def get_detailed_play_type(row: pd.Series) -> str:
         if row['play_type'] == 'pass':
             if row['incomplete_pass'] == 1: return 'pass_incomplete'
             if row['interception'] == 1: return 'pass_intercepted' 
             return 'pass_complete'
-        return row['play_type']
+        return str(row['play_type'])
 
     data['play_type_detail'] = data.apply(get_detailed_play_type, axis=1)
     
