@@ -16,9 +16,10 @@ dependencies = [
     "joblib>=1.5.2",
     "line-profiler>=5.0.0",
     "matplotlib>=3.10.7",
-    "nfl-data-py>=0.3.3",
+    "nflreadpy>=0.1.5",
     "numpy<2.0",
     "pandas<2.0",
+    "pyarrow>=22.0.0",
     "pydantic>=2.12.5",
     "pyyaml>=6.0.3",
     "requests>=2.32.5",
@@ -26,6 +27,7 @@ dependencies = [
     "scipy<1.16",
     "seaborn>=0.13.2",
     "statsmodels>=0.14.5",
+    "xgboost>=3.1.2",
 ]
 
 [dependency-groups]

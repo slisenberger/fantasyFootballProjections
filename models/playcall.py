@@ -1,16 +1,33 @@
 import pandas as pd
 import joblib
-from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
 model_name = "models/trained_models/playcall_regression_model"
 
+class XGBPlayCaller:
+    def __init__(self, model, encoder):
+        self.model = model
+        self.encoder = encoder
+    
+    @property
+    def classes_(self):
+        return self.encoder.classes_
+        
+    def predict_proba(self, X):
+        return self.model.predict_proba(X)
+        
+    def score(self, X, y):
+        # X is values, y is strings
+        y_enc = self.encoder.transform(y)
+        return self.model.score(X, y_enc)
 
-def build_or_load_playcall_model():
+def build_or_load_playcall_model(fast=False):
     try:
         return joblib.load(model_name)
     except FileNotFoundError:
-        model = build_playcall_model()
+        model = build_playcall_model(fast=fast)
         joblib.dump(model, model_name)
         return model
 
@@ -38,7 +55,7 @@ def test_playcall_model(model):
 
 # Produces a model from logistic regression that produces a probability of
 # run/pass/kick/punt from the gamestate.
-def build_playcall_model():
+def build_playcall_model(fast=False):
     # get the baseline data
     YEARS = [2018, 2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
@@ -51,7 +68,7 @@ def build_playcall_model():
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = data.loc[
         (data.play_type.isin(["punt", "field_goal", "pass", "run"]))
-    ].loc[not data.two_point_attempt]
+    ].loc[data.two_point_attempt == 0]
     # Give data Pass/Run/Punt/Kick Labels
     feature_cols = [
         "down",
@@ -64,11 +81,28 @@ def build_playcall_model():
     meaningful_plays.dropna(inplace=True, subset=feature_cols)
     X = meaningful_plays[feature_cols]
     Y = meaningful_plays["play_type"]
+    
+    # Encode targets
+    le = LabelEncoder()
+    Y_enc = le.fit_transform(Y)
+    
     # Split the data randomly
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y_enc, test_size=0.25)
 
     # Train a model
-    logreg = LogisticRegression(max_iter=10000)
-    logreg.fit(X_train.values, Y_train.values)
-    print(logreg.score(X_test, Y_test))
-    return logreg
+    # Use XGBClassifier for speed and better non-linear fit
+    n_estimators = 50 if fast else 100
+    xgb_model = XGBClassifier(
+        n_estimators=n_estimators, 
+        max_depth=4, 
+        learning_rate=0.1,
+        objective='multi:softprob',
+        eval_metric='mlogloss'
+    )
+    xgb_model.fit(X_train.values, Y_train)
+    
+    wrapper = XGBPlayCaller(xgb_model, le)
+    # Pass original string Y labels to wrapper.score for verification (it handles encoding)
+    print(wrapper.score(X_test.values, le.inverse_transform(Y_test)))
+    
+    return wrapper

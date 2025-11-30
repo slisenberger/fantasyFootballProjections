@@ -13,7 +13,7 @@ from sklearn.calibration import CalibrationDisplay
 from joblib import Parallel, delayed
 from dateutil.parser import parse
 
-import nfl_data_py
+from data import nfl_client as nfl_data_py
 import score
 from engine import game
 from stats import players, teams, injuries

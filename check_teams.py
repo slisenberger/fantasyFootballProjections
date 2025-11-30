@@ -1,4 +1,4 @@
-import nfl_data_py
+from data import nfl_client as nfl_data_py
 from stats import teams
 from data import loader
 

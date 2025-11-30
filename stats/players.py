@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-import nfl_data_py
+from data import nfl_client as nfl_data_py
 from statsmodels.formula.api import mixedlm
 from collections import defaultdict
 from stats import injuries, teams
@@ -34,6 +34,9 @@ def calculate(data, team_stats, season, week):
             "pos_rank": "depth_team",
             "pos_abb": "position" 
         })
+
+    # Ensure depth_team is numeric
+    depth_charts["depth_team"] = pd.to_numeric(depth_charts["depth_team"], errors="coerce")
 
     qb1s = depth_charts.loc[
         (depth_charts.position == "QB") & (depth_charts.depth_team == 1)

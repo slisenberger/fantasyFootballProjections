@@ -12,8 +12,8 @@ def mock_external_data_and_models(mock_models_for_game_state, mock_pbp_data, moc
     Mocks various external data loading and model fetching functions
     to allow project_week to run in isolation for a smoke test.
     """
-    with (patch('nfl_data_py.import_schedules') as mock_schedules, 
-          patch('nfl_data_py.import_seasonal_rosters') as mock_rosters,
+    with (patch('data.nfl_client.import_schedules') as mock_schedules, 
+          patch('data.nfl_client.import_seasonal_rosters') as mock_rosters,
           patch('stats.injuries.get_injury_data') as mock_injuries,
           patch('stats.players.calculate') as mock_players_calc,
           patch('stats.teams.calculate') as mock_teams_calc,

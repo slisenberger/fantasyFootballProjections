@@ -28,6 +28,7 @@ We model interactions using three layers to balance physical realism with player
 5.  **Verify:** Ensure no regression in data integrity (NaNs, Zero Weights).
 
 ## 🧠 Lessons Learned & Guidelines
+- **Planning is Essential:** All major initiatives must begin with a structured, actionable markdown plan (like `action_plan.md`, `testing_plan.md`, `documentation_plan.md`) that includes specific "Git Commit Milestones".
 - **Data Integrity is King:** 
     - **EWMA Sorting:** Must sort by `['season', 'week']` to prevent interleaving years.
     - **NaN Poisoning:** Aggregators must handle `NaN` keys/values to avoid dropping valid players.
@@ -41,6 +42,8 @@ We model interactions using three layers to balance physical realism with player
 - **Warning Triage:** Do not ignore warnings. `SettingWithCopy` often indicates real data flow bugs. `InconsistentVersion` requires model rebuilding.
 
 ## 🎯 Roadmap
-1.  **QB Ceiling (Active):** Mobile QBs still under-projected (33% Fail High). Needs Split KDEs or Conditional Modeling.
-2.  **Shootout Logic:** High-scoring games under-projected (55% Fail High). Needs Pace/Volume variance.
-3.  **DST Calibration:** Defense scoring is highly volatile; needs dedicated model or acceptance of variance.
+1.  **Refactor Core Engine (Active):** Execute `action_plan.md` to decouple `GameState` and modularize stats.
+2.  **Statistical Validation (Active):** Execute `testing_plan.md` to add KDE fidelity and Estimator invariant tests.
+3.  **Documentation Modernization (Active):** Execute `documentation_plan.md` to add Type Hints and ADRs.
+4.  **QB Ceiling:** Mobile QBs still under-projected.
+5.  **Shootout Logic:** High-scoring games under-projected.

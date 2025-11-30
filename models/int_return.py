@@ -8,19 +8,27 @@ import joblib
 int_return_model_name = "models/trained_models/int_return_yards_kde"
 
 
-def build_or_load_int_return_kde():
+def build_int_return_kde(fast=False):
+    data = int_return_data(fast=fast)
+    all_returns = data.loc[data.interception == 1]["return_yards"].dropna()
+    model = fit_kde(all_returns, fast=fast)
+    return model
+
+def build_or_load_int_return_kde(fast=False):
     try:
         return joblib.load(int_return_model_name)
     except FileNotFoundError:
-        data = int_return_data()
-        all_returns = data.loc[data.interception]["return_yards"].dropna()
-        model = fit_kde(all_returns)
+        model = build_int_return_kde(fast=fast)
         joblib.dump(model, int_return_model_name)
         return model
 
 
-def int_return_data():
-    YEARS = [2018, 2019, 2020, 2021, 2022, 2023]
+def int_return_data(fast=False):
+    if fast:
+        YEARS = [2022, 2023]
+    else:
+        # Always use full history
+        YEARS = [2018, 2019, 2020, 2021, 2022, 2023]
     data = pd.DataFrame()
     for i in YEARS:
         i_data = pd.read_csv(
@@ -32,9 +40,12 @@ def int_return_data():
     return data
 
 
-def fit_kde(data):
+def fit_kde(data, fast=False):
     array_like = data.values.reshape(-1, 1)
-    params = {"bandwidth": np.logspace(-1, 1, 20)}
+    if fast:
+        params = {"bandwidth": [0.5, 1.0, 2.0]}
+    else:
+        params = {"bandwidth": np.logspace(-1, 1, 20)}
     grid = GridSearchCV(KernelDensity(), params)
     kde = grid.fit(array_like).best_estimator_
     x = np.linspace(data.min(), data.max(), 100)

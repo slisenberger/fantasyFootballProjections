@@ -3,7 +3,7 @@ import pandas as pd
 import json
 import os
 import time
-import nfl_data_py
+from data import nfl_client as nfl_data_py
 from main import get_models
 from data import loader
 from stats import injuries

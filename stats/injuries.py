@@ -1,7 +1,7 @@
 import requests
 import json
 import pandas as pd
-import nfl_data_py
+from data import nfl_client as nfl_data_py
 
 INJURY_API_URL = "https://api.myfantasyleague.com/%s/export?TYPE=injuries&W=%s&JSON=1"
 

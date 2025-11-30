@@ -29,10 +29,10 @@ def build_completion_model():
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = (
         data.loc[(data.play_type.isin(["pass"]))]
-        .loc[data.pass_attempt]
-        .loc[not data.two_point_attempt]
-        .loc[not data.sack]
-        .loc[not data.fumble]
+        .loc[data.pass_attempt == 1]
+        .loc[data.two_point_attempt == 0]
+        .loc[data.sack == 0]
+        .loc[data.fumble == 0]
     )
     feature_cols = ["down", "ydstogo", "yardline_100", "air_yards"]
     label_col = ["complete_pass"]
