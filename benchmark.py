@@ -39,6 +39,7 @@ def run_benchmark(simulations=50, version="benchmark"):
     loader.clean_and_save_data(list(years_needed))
     injuries.clean_and_save_data(list(years_needed))
     pbp_data = loader.load_data(list(years_needed))
+    snap_data = loader.load_snap_counts(list(years_needed))
     
     all_results = []
     models = get_models()
@@ -53,7 +54,7 @@ def run_benchmark(simulations=50, version="benchmark"):
             config.runtime.season = season
             config.runtime.week = week
             
-            sims_df = project_week(pbp_data, models, season, week, config)
+            sims_df = project_week(pbp_data, snap_data, models, season, week, config)
             actuals_df = calculate_fantasy_leaders(pbp_data, season, week, config)
             
             sims_df['simulations'] = sims_df.values.tolist()
