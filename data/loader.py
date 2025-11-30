@@ -77,12 +77,12 @@ def load_data(years):
     data = data.drop(cols_to_drop, axis=1)
 
     roster_data = nfl_data_py.import_seasonal_rosters(
-        years, columns=["player_id", "position"]
+        years, columns=["player_id", "position", "season"]
     )
     receiver_roster_data = roster_data.rename(
         columns={"position": "position_receiver", "player_id": "receiver_player_id"}
-    )[["position_receiver", "receiver_player_id"]].dropna()
-    data = data.merge(receiver_roster_data, on="receiver_player_id", how="left")
+    )[["position_receiver", "receiver_player_id", "season"]].dropna()
+    data = data.merge(receiver_roster_data, on=["receiver_player_id", "season"], how="left")
 
     data.reset_index(drop=True, inplace=True)
     return data
