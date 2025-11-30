@@ -1,6 +1,6 @@
 import pandas as pd
 import joblib
-from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 
 model_name = "models/trained_models/completion_regression_model"
@@ -45,7 +45,13 @@ def build_completion_model():
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25)
 
     # Train a model
-    logreg = LogisticRegression(max_iter=10000)
-    logreg.fit(X_train.values, Y_train.values)
-    print(logreg.score(X_test, Y_test))
-    return logreg
+    # Swapped LogisticRegression for XGBClassifier for speed and non-linearity
+    xgb_model = XGBClassifier(
+        n_estimators=100, 
+        max_depth=4, 
+        learning_rate=0.1, 
+        eval_metric='logloss'
+    )
+    xgb_model.fit(X_train.values, Y_train.values.ravel())
+    print(xgb_model.score(X_test.values, Y_test.values.ravel()))
+    return xgb_model

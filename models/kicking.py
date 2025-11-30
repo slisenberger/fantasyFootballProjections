@@ -1,10 +1,27 @@
 import pandas as pd
 import joblib
-from sklearn.linear_model import LogisticRegression
+from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelEncoder
 
 model_name = "models/trained_models/kicking_regression_model"
 
+class XGBKicker:
+    def __init__(self, model, encoder):
+        self.model = model
+        self.encoder = encoder
+    
+    @property
+    def classes_(self):
+        return self.encoder.classes_
+        
+    def predict_proba(self, X):
+        return self.model.predict_proba(X)
+        
+    def score(self, X, y):
+        # X is values, y is strings
+        y_enc = self.encoder.transform(y)
+        return self.model.score(X, y_enc)
 
 def build_or_load_kicking_model():
     try:
@@ -38,11 +55,23 @@ def build_kicking_model():
     X_nan = X[X.isna().any(axis=1)]
     Y = meaningful_plays["field_goal_result"]
     print(X_nan)
+    
+    # Encode targets
+    le = LabelEncoder()
+    Y_enc = le.fit_transform(Y)
+    
     # Split the data randomly
-    X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25)
+    X_train, X_test, Y_train, Y_test = train_test_split(X, Y_enc, test_size=0.25)
 
     # Train a model
-    logreg = LogisticRegression(max_iter=10000)
-    logreg.fit(X_train.values, Y_train.values)
-    print(logreg.score(X_test, Y_test))
-    return logreg
+    xgb_model = XGBClassifier(
+        n_estimators=100, 
+        max_depth=4, 
+        learning_rate=0.1, 
+        eval_metric='logloss'
+    )
+    xgb_model.fit(X_train.values, Y_train)
+    
+    wrapper = XGBKicker(xgb_model, le)
+    print(wrapper.score(X_test.values, le.inverse_transform(Y_test)))
+    return wrapper
