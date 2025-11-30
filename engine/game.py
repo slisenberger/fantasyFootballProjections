@@ -113,7 +113,11 @@ class GameState:
         self.rush_open_samples = models["rush_open_samples"]
         self.rush_rz_samples = models["rush_rz_samples"]
         
-        self.scramble_samples = models["scramble_samples"]
+        self.scramble_samples = {
+            "default": models.get("scramble_samples", []),
+            "mobile": models.get("scramble_samples_mobile", []),
+            "pocket": models.get("scramble_samples_pocket", [])
+        }
         self.int_return_samples = models["int_return_samples"]
 
         self.game_over = False
@@ -1030,6 +1034,7 @@ class GameState:
         """Simulates rushing yards for a quarterback scramble.
 
         Adjusts the sampled scramble yards based on the QB's relative scramble efficiency.
+        Uses split KDEs (mobile vs pocket) if available.
 
         Args:
             qb (Dict[str, Any]): Dictionary of the quarterback's stats.
@@ -1037,7 +1042,15 @@ class GameState:
         Returns:
             float: Simulated scramble yards.
         """
-        yards = self._get_sample(self.scramble_samples)
+        is_mobile = qb.get("is_mobile", 0) == 1
+        key = "mobile" if is_mobile else "pocket"
+        samples = self.scramble_samples.get(key)
+        
+        # Fallback to default if specific samples are missing or empty
+        if samples is None or len(samples) == 0:
+             samples = self.scramble_samples.get("default")
+
+        yards = self._get_sample(samples)
         multiplier = qb.get("relative_yards_per_scramble_est", 1.0)
         yards *= multiplier
         return yards

@@ -4,6 +4,7 @@ from sklearn.model_selection import GridSearchCV
 import pandas as pd
 import numpy as np
 import joblib
+from data import loader
 
 rush_open_model_name = "models/trained_models/rushing_yards_open_kde"
 rush_rz_model_name = "models/trained_models/rushing_yards_rz_kde"
@@ -47,10 +48,39 @@ def build_or_load_rush_rz_kde(fast=False):
 
 def build_scramble_kde(fast=False):
     data = rusher_data(fast=fast)
-    data = data.loc[data.qb_scramble == 1]
-    all_rush = data["rushing_yards"].dropna()
-    model = fit_kde(all_rush, fast=fast)
-    return model
+    
+    # Classify QBs for Split KDEs
+    rush_stats = data[data['rush'] == 1].groupby(['season', 'rusher_player_id']).agg({
+        'rushing_yards': 'sum',
+        'game_id': 'nunique'
+    }).reset_index()
+    rush_stats['ypg'] = rush_stats['rushing_yards'] / rush_stats['game_id']
+    
+    # Map (season, id) -> is_mobile
+    mobile_map = {}
+    for _, row in rush_stats.iterrows():
+        mobile_map[(row['season'], row['rusher_player_id'])] = row['ypg'] > 20.0
+        
+    scrambles = data.loc[data.qb_scramble == 1].copy()
+    scrambles['rusher_player_id'] = scrambles['rusher_player_id'].fillna(scrambles['passer_player_id'])
+    
+    scrambles['is_mobile'] = scrambles.apply(lambda x: mobile_map.get((x['season'], x['rusher_player_id']), False), axis=1)
+    
+    # Train Models
+    all_rush = scrambles['rushing_yards'].dropna()
+    kde_default = fit_kde(all_rush, fast=fast)
+    
+    mobile_data = scrambles[scrambles['is_mobile']]['rushing_yards'].dropna()
+    kde_mobile = fit_kde(mobile_data, fast=fast) if len(mobile_data) > 50 else kde_default
+    
+    pocket_data = scrambles[~scrambles['is_mobile']]['rushing_yards'].dropna()
+    kde_pocket = fit_kde(pocket_data, fast=fast) if len(pocket_data) > 50 else kde_default
+    
+    return {
+        'default': kde_default,
+        'mobile': kde_mobile,
+        'pocket': kde_pocket
+    }
 
 def build_or_load_scramble_kde(fast=False):
     try:
@@ -63,17 +93,12 @@ def build_or_load_scramble_kde(fast=False):
 
 def rusher_data(fast=False):
     if fast:
-        # Use 2 years for fast mode to cover recent trends without full history overhead
         YEARS = [2022, 2023]
     else:
         YEARS = [2019, 2020, 2021, 2022, 2023]
-    data = pd.DataFrame()
-    for i in YEARS:
-        i_data = pd.read_csv(
-            "data/pbp_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
-        )
-
-        data = pd.concat([data, i_data], sort=True)
+    
+    # Use loader instead of direct CSV read
+    data = loader.load_data(YEARS)
     data.reset_index(drop=True, inplace=True)
     return data
 

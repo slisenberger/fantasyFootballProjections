@@ -104,8 +104,9 @@ def mock_player_stats():
         'scramble_rate_est': [0.1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.0, 0.0], # Corrected length
         'yards_per_scramble_est': [5.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0], # Corrected length
         'relative_yards_per_scramble_est': [1.0] * 16,
-        'snap_share_est': [1.0] * 16, # Added
-        'fgoe_est': [0.0] * 16, # Added
+        'snap_share_est': [1.0] * 16, 
+        'fgoe_est': [0.0] * 16,
+        'is_mobile': [0] * 16, # Added
         'starting_qb': [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0], # Corrected length
         'kick_attempts': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
         'starting_k': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
@@ -200,6 +201,8 @@ def mock_models_for_game_state():
         "rush_open_samples": mock_samples,
         "rush_rz_samples": mock_samples,
         "scramble_samples": mock_samples,
+        "scramble_samples_mobile": mock_samples,
+        "scramble_samples_pocket": mock_samples,
         "int_return_samples": mock_samples,
         "air_yards_RB_samples": mock_samples,
         "air_yards_TE_samples": mock_samples,

@@ -94,7 +94,7 @@ def project_week(data, snap_data, models, season, week, config):
             "receiver_cpoe_est", "carry_share_est", "redzone_carry_share_est",
             "carry_percentage", "carries", "relative_ypc", "relative_ypc_est",
             "cpoe_est", "pass_attempts", "scramble_rate_est", "yards_per_scramble_est",
-            "relative_yards_per_scramble_est", "snap_share_est", "fgoe_est",
+            "relative_yards_per_scramble_est", "snap_share_est", "fgoe_est", "is_mobile",
             "starting_qb", "kick_attempts", "starting_k",
         ]
     ]
@@ -418,7 +418,12 @@ def get_models():
     models["rush_open_samples"] = models["rush_open_model"].sample(SAMPLE_SIZE).flatten()
     models["rush_rz_samples"] = models["rush_rz_model"].sample(SAMPLE_SIZE).flatten()
     
-    models["scramble_samples"] = models["scramble_model"].sample(SAMPLE_SIZE).flatten()
+    # Scramble Sampling (Split)
+    scramble_kde_dict = models["scramble_model"]
+    models["scramble_samples"] = scramble_kde_dict["default"].sample(SAMPLE_SIZE).flatten()
+    models["scramble_samples_mobile"] = scramble_kde_dict["mobile"].sample(SAMPLE_SIZE).flatten()
+    models["scramble_samples_pocket"] = scramble_kde_dict["pocket"].sample(SAMPLE_SIZE).flatten()
+    
     models["int_return_samples"] = models["int_return_model"].sample(SAMPLE_SIZE).flatten()
     
     # Receiver Models (Air Yards & YAC)

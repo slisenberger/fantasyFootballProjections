@@ -260,6 +260,17 @@ def calculate(data: pd.DataFrame, snap_counts: pd.DataFrame, team_stats: pd.Data
         .reset_index()
         .rename(columns={"kicker_player_id": "player_id"})
     )
+    
+    # Mobile QB Classification (>20 rushing yards per game)
+    qb_ids_list = roster_data.loc[roster_data.position == 'QB', 'player_id']
+    rush_stats_qb = data[data['rush'] == 1].groupby('rusher_player_id').agg({
+        'rushing_yards': 'sum',
+        'game_id': 'nunique'
+    })
+    rush_stats_qb['ypg'] = rush_stats_qb['rushing_yards'] / rush_stats_qb['game_id']
+    mobile_qb_ids = rush_stats_qb[(rush_stats_qb.index.isin(qb_ids_list)) & (rush_stats_qb['ypg'] > 20.0)].index.to_list()
+    mobile_df = pd.DataFrame({'player_id': mobile_qb_ids, 'is_mobile': 1})
+
     # Useless calls removed from here
     offense_stats = (
         receiver_targets.merge(receiver_deep_targets, how="outer", on="player_id")
@@ -288,7 +299,10 @@ def calculate(data: pd.DataFrame, snap_counts: pd.DataFrame, team_stats: pd.Data
         .merge(kick_attempts, how="outer", on="player_id")
         .merge(qb1s, how="left", on="player_id")
         .merge(k1s, how="left", on="player_id")
+        .merge(mobile_df, how="left", on="player_id") # Added
     )
+    offense_stats["is_mobile"] = offense_stats["is_mobile"].fillna(0).astype(int)
+    
     offense_stats["checkdown_percentage"] = (
         offense_stats["checkdown_targets"] / offense_stats["targets"]
     )
