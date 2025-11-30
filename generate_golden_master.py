@@ -65,6 +65,7 @@ def generate():
     # 3. Data
     print("Loading Data...")
     pbp_data = loader.load_data([SEASON, SEASON-1]) # Need context
+    snap_counts = loader.load_snap_counts([SEASON, SEASON-1])
     rosters = nfl_client.import_seasonal_rosters([SEASON])
     depth_charts = nfl_client.import_depth_charts([SEASON])
     schedules = nfl_client.import_schedules([SEASON])
@@ -73,7 +74,7 @@ def generate():
     # 4. Calculate Stats
     print("Calculating Stats...")
     team_stats = teams.calculate(pbp_data, SEASON)
-    player_stats = players.calculate(pbp_data, team_stats, SEASON, WEEK)
+    player_stats = players.calculate(pbp_data, snap_counts, team_stats, SEASON, WEEK)
     
     # 5. Save Inputs
     print("Saving Inputs...")

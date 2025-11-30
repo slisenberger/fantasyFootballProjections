@@ -35,6 +35,7 @@ This document supersedes individual plans as the primary execution schedule. It 
 
 ### 1.2 Snap Share Estimator (Snap Plan)
 *   **Ref:** `snap_share_plan.md`
+*   **Status:** **[Done]**
 *   **Input:** Historical Snap Counts (Now available in loader).
 *   **Output:** `snap_share_est` (Probability of being on the field).
 *   **Value:** Immediate fix for "WR5 gets random targets" bug. Prerequisite for Target Share.

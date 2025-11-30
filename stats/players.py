@@ -15,7 +15,7 @@ receiver_span = 150
 rusher_span = 150
 
 
-def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: int) -> pd.DataFrame:
+def calculate(data: pd.DataFrame, snap_counts: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: int) -> pd.DataFrame:
     """Calculates comprehensive player statistics and estimators for a given season and week.
 
     This function processes raw play-by-play data, merges roster and depth chart information,
@@ -27,6 +27,7 @@ def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: i
             'air_yards', 'yards_after_catch', 'receiver_player_id', 'rusher_player_id',
             'run_gap', 'passer_player_id', 'cpoe', 'field_goal_attempt', 'kicker_player_id',
             'yardline_100', 'season', 'week', 'posteam', 'defteam', 'position_receiver'.
+        snap_counts (pd.DataFrame): Snap count data from nflreadpy.
         team_stats (pd.DataFrame): Pre-calculated team statistics and estimators.
             Expected columns include: 'team', various 'offense_oe_est', 'defense_oe_est',
             'offense_sack_rate_est', 'defense_sack_rate_est', etc.
@@ -119,7 +120,7 @@ def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: i
     lg_avg_scramble_yards = data.loc[data.qb_scramble == 1]["rushing_yards"].mean()
 
     weekly_team_stats = teams.calculate_weekly(data, season)
-    weekly_player_stats = calculate_weekly(data, weekly_team_stats, season)
+    weekly_player_stats = calculate_weekly(data, snap_counts, weekly_team_stats, season)
 
     receiver_targets = (
         data.groupby("receiver_player_id")["receiver_player_id"]
@@ -308,10 +309,13 @@ def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: i
     )
     targets_est = weekly_target_share_estimator(weekly_player_stats)
     carries_est = weekly_carry_share_estimator(weekly_player_stats)
+    snaps_est = weekly_snap_share_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(targets_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(carries_est, how="outer", on="player_id")
+    offense_stats = offense_stats.merge(snaps_est, how="outer", on="player_id")
     offense_stats["target_share_est"].fillna(0, inplace=True)
     offense_stats["carry_share_est"].fillna(0, inplace=True)
+    offense_stats["snap_share_est"].fillna(0, inplace=True)
     rz_targets_est = weekly_redzone_target_share_estimator(weekly_player_stats)
     rz_carries_est = weekly_redzone_carry_share_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(rz_targets_est, how="outer", on="player_id")
@@ -594,7 +598,7 @@ def compute_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
     ).rename(columns={'receiver_player_id': 'player_id'})
 
 
-def calculate_weekly(data: pd.DataFrame, weekly_team_stats: pd.DataFrame, season: int) -> pd.DataFrame:
+def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_stats: pd.DataFrame, season: int) -> pd.DataFrame:
     """Calculates weekly player statistics for target and carry shares.
 
     This function aggregates play-by-play data on a weekly basis, computes player
@@ -605,6 +609,7 @@ def calculate_weekly(data: pd.DataFrame, weekly_team_stats: pd.DataFrame, season
         data (pd.DataFrame): Raw play-by-play data (PBP).
             Expected columns include: 'play_type', 'rush', 'receiver_player_id',
             'rusher_player_id', 'yardline_100', 'season', 'week', 'posteam'.
+        snap_counts (pd.DataFrame): Snap count data.
         weekly_team_stats (pd.DataFrame): Weekly team totals for targets, carries, etc.
             Expected columns include: 'team', 'season', 'week', 'targets_wk',
             'carries_wk', 'redzone_targets_wk', 'redzone_carries_wk'.
@@ -700,6 +705,24 @@ def calculate_weekly(data: pd.DataFrame, weekly_team_stats: pd.DataFrame, season
         # Let's keep it but be aware it might be partial.
         .merge(get_weekly_injuries(season), how="left", on=["player_id", "week"]) 
     )
+
+    # --- Snap Count Integration ---
+    # 1. Load ID Map to link PFR ID to GSIS ID
+    id_map = nfl_data_py.import_ids(columns=["gsis_id", "pfr_id"])
+    id_map = id_map.dropna(subset=["pfr_id", "gsis_id"]).rename(columns={"pfr_id": "pfr_player_id", "gsis_id": "player_id"})
+    
+    # 2. Merge IDs into Snap Counts
+    snap_counts = snap_counts.merge(id_map, on="pfr_player_id", how="inner")
+    
+    # 3. Prepare Snap Data for Merge
+    # We need: season, week, player_id, offense_pct
+    snap_metrics = snap_counts[["season", "week", "player_id", "offense_pct", "offense_snaps"]].copy()
+    snap_metrics["offense_pct"] = snap_metrics["offense_pct"].astype(float)
+    
+    # 4. Merge into Weekly Stats
+    weekly_stats = weekly_stats.merge(snap_metrics, on=["season", "week", "player_id"], how="left")
+    weekly_stats["offense_pct"] = weekly_stats["offense_pct"].fillna(0.0)
+    weekly_stats["offense_snaps"] = weekly_stats["offense_snaps"].fillna(0.0)
 
     weekly_stats["available"] = weekly_stats["available"].fillna(True)
     
@@ -803,6 +826,33 @@ def weekly_target_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
         target_span, 
         priors_df, 
         'target_share_est'
+    )
+
+
+def weekly_snap_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for player snap share.
+
+    Args:
+        weekly_data (pd.DataFrame): Weekly player stats including 'offense_pct'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'player_id' and 'snap_share_est'.
+    """
+    # Assume 10% snap share for new players
+    snap_prior = 0.1
+    # Short span to adapt quickly to role changes
+    snap_span = 4
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['offense_pct'] = snap_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'offense_pct', 
+        snap_span, 
+        priors_df, 
+        'snap_share_est'
     )
 
 

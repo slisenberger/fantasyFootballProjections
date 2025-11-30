@@ -129,6 +129,28 @@ def mock_team_stats():
     }
     return pd.DataFrame(data)
 
+@pytest.fixture
+def mock_snap_data():
+    """A mock DataFrame for snap counts."""
+    data = {
+        'game_id': ['2024_01_BUF_MIA'],
+        'pfr_game_id': ['202409080mia'],
+        'season': [2024],
+        'week': [1],
+        'game_type': ['REG'],
+        'team': ['BUF'],
+        'player': ['Josh Allen'],
+        'pfr_player_id': ['AlleJo02'],
+        'position': ['QB'],
+        'offense_snaps': [60],
+        'offense_pct': [1.0],
+        'defense_snaps': [0],
+        'defense_pct': [0.0],
+        'st_snaps': [0],
+        'st_pct': [0.0],
+    }
+    return pd.DataFrame(data)
+
 
 @pytest.fixture
 def mock_models_for_game_state():
@@ -151,7 +173,7 @@ def mock_models_for_game_state():
     mock_field_goal_model.predict_proba.return_value = [[0.8, 0.2]] # 80% chance to make FG
 
     mock_completion_model = MagicMock()
-    mock_completion_model.classes_ = ['complete', 'incomplete']
+    mock_completion_model.classes_ = [1, 0] # 1=Complete, 0=Incomplete
     mock_completion_model.predict_proba.return_value = [[0.7, 0.3]] # 70% chance to complete pass
     
     return {

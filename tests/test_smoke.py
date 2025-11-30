@@ -14,6 +14,7 @@ def mock_external_data_and_models(mock_models_for_game_state, mock_pbp_data, moc
     """
     with (patch('data.nfl_client.import_schedules') as mock_schedules, 
           patch('data.nfl_client.import_seasonal_rosters') as mock_rosters,
+          patch('data.nfl_client.import_ids') as mock_ids,
           patch('stats.injuries.get_injury_data') as mock_injuries,
           patch('stats.players.calculate') as mock_players_calc,
           patch('stats.teams.calculate') as mock_teams_calc,
@@ -33,6 +34,12 @@ def mock_external_data_and_models(mock_models_for_game_state, mock_pbp_data, moc
             'position': ['QB', 'RB', 'WR', 'QB', 'RB'],
             'player_name': ['Josh Allen', 'James Cook', 'Stefon Diggs', 'Tua Tagovailoa', 'Raheem Mostert'],
             'team': ['BUF', 'BUF', 'BUF', 'MIA', 'MIA'],
+        })
+        
+        # Mock ID map
+        mock_ids.return_value = pd.DataFrame({
+            'gsis_id': ['QB_BUF'],
+            'pfr_id': ['AlleJo02']
         })
 
         # Mock injuries data
@@ -58,7 +65,7 @@ def mock_app_config_smoke():
     )
 
 def test_project_week_smoke_test(
-    mock_pbp_data, mock_models_for_game_state, mock_app_config_smoke, mock_external_data_and_models
+    mock_pbp_data, mock_snap_data, mock_models_for_game_state, mock_app_config_smoke, mock_external_data_and_models
 ):
     """
     Smoke test for project_week function: ensures it runs without crashing
@@ -66,13 +73,13 @@ def test_project_week_smoke_test(
     """
     config = mock_app_config_smoke
     proj_df = project_week(
-        mock_pbp_data, mock_models_for_game_state, config.runtime.season, config.runtime.week, config
+        mock_pbp_data, mock_snap_data, mock_models_for_game_state, config.runtime.season, config.runtime.week, config
     )
     assert isinstance(proj_df, pd.DataFrame)
     assert not proj_df.empty # Should have some projection data
 
 def test_run_projections_smoke_test(
-    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
+    mock_pbp_data, mock_snap_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
 ):
     """
     Smoke test for the run_projections main entry point.
@@ -84,13 +91,13 @@ def test_run_projections_smoke_test(
     # We don't mock os.makedirs or to_csv anymore, let it write to tmp_path
     # But we mock plot_predictions to avoid GUI
     with patch('main.plot_predictions'): 
-        run_projections(mock_pbp_data, config)
+        run_projections(mock_pbp_data, mock_snap_data, config)
         
     # Verify output exists
     assert (tmp_path / f"v{config.runtime.version}" / "ros" / "ros_report.html").exists()
 
 def test_run_backtest_smoke_test(
-    mock_pbp_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
+    mock_pbp_data, mock_snap_data, mock_app_config_smoke, mock_external_data_and_models, tmp_path
 ):
     """
     Smoke test for the run_backtest main entry point.
@@ -104,6 +111,6 @@ def test_run_backtest_smoke_test(
     with patch('main.plot_predictions'), \
          patch('evaluation.calibration.plot_pit_histogram'):
 
-        run_backtest(mock_pbp_data, config)
+        run_backtest(mock_pbp_data, mock_snap_data, config)
         # Check for metrics file
         assert (tmp_path / f"v{config.runtime.version}" / "calibration" / "metrics.csv").exists()

@@ -66,13 +66,13 @@ def build_player_id_map(data):
     return all_players
 
 
-def project_week(data, models, season, week, config):
+def project_week(data, snap_data, models, season, week, config):
     n = config.runtime.n_simulations
     season_data = data.loc[
         (data.season == season - 1) | ((data.season == season) & (data.week < week))
     ]
     team_stats = teams.calculate(season_data, season)
-    player_stats = players.calculate(season_data, team_stats, season, week)
+    player_stats = players.calculate(season_data, snap_data, team_stats, season, week)
     schedules = nfl_data_py.import_schedules([season])
     schedules = schedules.loc[schedules.week == week]
 
@@ -306,7 +306,7 @@ def compute_stats_and_export(projection_data, season, week, version, output_dir=
     html_generator.generate_html_report(week, season, base_dir)
 
 
-def project_ros(pbp_data, models, config):
+def project_ros(pbp_data, snap_data, models, config):
     all_weeks = []
     
     season = config.runtime.season
@@ -316,7 +316,7 @@ def project_ros(pbp_data, models, config):
     for week in range(cur_week, 19):
         print("Running projections on %s Week %s" % (season, week))
         projection_data = project_week(
-            pbp_data, models, season, week, config
+            pbp_data, snap_data, models, season, week, config
         ).reset_index()
         mean = projection_data.mean(axis=1)
         percentile_90 = projection_data.quantile(0.9, axis=1)
@@ -429,13 +429,13 @@ def get_models():
     return models
 
 
-def run_projections(pbp_data, config):
+def run_projections(pbp_data, snap_data, config):
     models = get_models()
     print(f"--- Generating Projections for Season {config.runtime.season} Week {config.runtime.week}+ ---")
-    project_ros(pbp_data, models, config)
+    project_ros(pbp_data, snap_data, models, config)
 
 
-def run_backtest(pbp_data, config):
+def run_backtest(pbp_data, snap_data, config):
     models = get_models()
     print("\n--- Starting Backtesting & Calibration ---")
     calibration_results = []
@@ -446,7 +446,7 @@ def run_backtest(pbp_data, config):
             print(f"Backtesting {season} Week {week}...")
             
             # A. Run Simulations -> Get Raw Distribution
-            sims_df = project_week(pbp_data, models, season, week, config)
+            sims_df = project_week(pbp_data, snap_data, models, season, week, config)
             
             # B. Get Actual Outcomes
             actuals_df = calculate_fantasy_leaders(pbp_data, season, week, config)
@@ -546,11 +546,12 @@ if __name__ == "__main__":
     loader.clean_and_save_data(list(years_to_load))
     injuries.clean_and_save_data(list(years_to_load))
     pbp_data = loader.load_data(list(years_to_load))
+    snap_data = loader.load_snap_counts(list(years_to_load))
     
     if command == "all":
-        run_projections(pbp_data, config)
-        run_backtest(pbp_data, config)
+        run_projections(pbp_data, snap_data, config)
+        run_backtest(pbp_data, snap_data, config)
     elif command == "project":
-        run_projections(pbp_data, config)
+        run_projections(pbp_data, snap_data, config)
     elif command == "backtest":
-        run_backtest(pbp_data, config)
+        run_backtest(pbp_data, snap_data, config)

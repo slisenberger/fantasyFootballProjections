@@ -43,8 +43,8 @@ This plan details the integration of snap count data to move from "Roster Assump
 - **Commit 0.1:** `feat(data): ingest snap_counts in loader` **[Done]**
 
 ### Phase 1: Stats Estimation
-- **Commit 1.1:** `feat(stats): calculate weekly snap percentages in players.py`
-- **Commit 1.2:** `feat(stats): implement EWMA snap_share_estimator`
+- **Commit 1.1:** `feat(stats): calculate weekly snap percentages in players.py` **[Done]**
+- **Commit 1.2:** `feat(stats): implement EWMA snap_share_estimator` **[Done]**
 
 ### Phase 2: Engine Integration
 - **Commit 2.1:** `feat(engine): implement probabilistic eligibility filter based on snap share`
