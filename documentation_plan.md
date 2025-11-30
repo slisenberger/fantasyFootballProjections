@@ -61,6 +61,7 @@ This plan transforms the project's documentation from a collection of stale mark
 *   **Action:** Initialize a static site generator to compile the docs into HTML.
 *   **Benefit:** Beautiful, searchable documentation site.
 *   **Timing:** Post-refactor.
+*   **Status:** **[In Progress]**
 
 ### Step 2.3: CI/CD Integration (The Quality Gate)
 *   **Action:** Add strict documentation checks to the pipeline.

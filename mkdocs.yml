@@ -1,0 +1,85 @@
+site_name: Fantasy Football Projections
+site_url: https://your-domain.com/ # TODO: Update with actual deployment URL
+
+nav:
+  - Home: index.md
+  - Architecture Decisions:
+      - adr/001-monolithic-gamestate-refactor.md
+      - adr/002-bayesian-estimators.md
+      - adr/003-xgboost-migration.md
+  - Guides:
+      - Benchmarking: guides/benchmarking.md
+  - Project Info:
+      - Roadmap: project/roadmap.md
+      - Hypotheses Log: architecture/hypotheses_log.md
+  - API Reference: api/
+
+theme:
+  name: material
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.indexes
+    - toc.integrate
+    - search.highlight
+    - search.suggest
+  palette:
+    - scheme: default
+      primary: indigo
+      accent: indigo
+      toggle:
+        icon: material/toggle-switch-off-outline
+        name: Switch to dark mode
+    - scheme: slate
+      primary: black
+      accent: light blue
+      toggle:
+        icon: material/toggle-switch
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  favicon: assets/favicon.png # Optional
+  logo: assets/logo.png # Optional
+
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.] # Search the current directory for Python files
+          show_root_heading: true
+          show_object_full_path: false
+          show_source: true
+          show_bases: true
+          show_object_heading: 3
+          group_by_category: true
+          separate_signature: true
+          members_order: alphabetical
+          docstring_section_style: spacy # Uses Google-style sections
+          annotations_path: brief # Show just the type, not the full path
+
+markdown_extensions:
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_numbers: true
+  - pymdownx.superfences
+  - pymdownx.details
+  - attr_list
+  - md_in_html
+  - admonition
+  - toc:
+      permalink: true
+  - extra
+  - pymdownx.snippets
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra_css:
+  - stylesheets/extra.css # Optional custom CSS
+
+# Custom settings for mkdocs-material
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/your-org/your-repo # TODO: Update with actual GitHub repo

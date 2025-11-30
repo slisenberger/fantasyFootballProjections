@@ -36,6 +36,9 @@ dependencies = [
 dev = [
     "pytest>=9.0.1",
     "pytest-cov>=7.0.0",
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.26",
+    "mkdocstrings[python]>=0.28.0",
 ]
 
 [tool.hatch.build.targets.wheel]
