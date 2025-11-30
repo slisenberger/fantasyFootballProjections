@@ -310,12 +310,15 @@ def calculate(data: pd.DataFrame, snap_counts: pd.DataFrame, team_stats: pd.Data
     targets_est = weekly_target_share_estimator(weekly_player_stats)
     carries_est = weekly_carry_share_estimator(weekly_player_stats)
     snaps_est = weekly_snap_share_estimator(weekly_player_stats)
+    fgoe_est = weekly_fgoe_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(targets_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(carries_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(snaps_est, how="outer", on="player_id")
+    offense_stats = offense_stats.merge(fgoe_est, how="outer", on="player_id")
     offense_stats["target_share_est"].fillna(0, inplace=True)
     offense_stats["carry_share_est"].fillna(0, inplace=True)
     offense_stats["snap_share_est"].fillna(0, inplace=True)
+    offense_stats["fgoe_est"].fillna(0, inplace=True)
     rz_targets_est = weekly_redzone_target_share_estimator(weekly_player_stats)
     rz_carries_est = weekly_redzone_carry_share_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(rz_targets_est, how="outer", on="player_id")
@@ -686,6 +689,23 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
         .reset_index()
         .rename(columns={"rusher_player_id": "player_id"})
     )
+    
+    # FGOE Calculation
+    fg_data = data.loc[data.play_type == 'field_goal'].copy()
+    fg_data['made'] = fg_data['field_goal_result'].apply(lambda x: 1 if x == 'made' else 0)
+    if 'fg_prob' in fg_data.columns:
+        fg_data['fg_prob'] = fg_data['fg_prob'].fillna(0.75) # Default to 75% if missing?
+    else:
+        fg_data['fg_prob'] = 0.75
+        
+    fg_data['fgoe'] = fg_data['made'] - fg_data['fg_prob']
+    
+    fgoe_weekly = (
+        fg_data.groupby(["season", "kicker_player_id", "week"])['fgoe']
+        .mean()
+        .reset_index()
+        .rename(columns={"kicker_player_id": "player_id", "fgoe": "fgoe_wk"})
+    )
 
     # Merge on season, player_id, week
     weekly_stats = (
@@ -697,6 +717,7 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
         .merge(weekly_carries, how="outer", on=["season", "player_id", "week"])
         .merge(weekly_red_zone_carries, how="outer", on=["season", "player_id", "week"])
         .merge(weekly_yards_per_carry, how="outer", on=["season", "player_id", "week"])
+        .merge(fgoe_weekly, how="outer", on=["season", "player_id", "week"]) # Merge FGOE
         # Note: Injuries merge is tricky with multi-season. Assuming we want current season injuries or ignoring for backtest EWMA history?
         # For EWMA, we don't strictly need injury status history unless we filter by it?
         # get_weekly_injuries returns for [season].
@@ -910,6 +931,33 @@ def weekly_redzone_carry_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFr
         carry_span, 
         priors_df, 
         'redzone_carry_share_est'
+    )
+
+
+def weekly_fgoe_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for Field Goal Over Expected (FGOE).
+
+    Args:
+        weekly_data (pd.DataFrame): Weekly player stats including 'fgoe_wk'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'player_id' and 'fgoe_est'.
+    """
+    # Assume average kicker (0.0)
+    fgoe_prior = 0.0
+    # Span of 16 weeks (one season)
+    fgoe_span = 16
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['fgoe_wk'] = fgoe_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'fgoe_wk', 
+        fgoe_span, 
+        priors_df, 
+        'fgoe_est'
     )
 
 

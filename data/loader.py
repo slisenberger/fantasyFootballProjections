@@ -66,7 +66,7 @@ def load_data(years):
         
             "td_player_id", "td_player_name", "no_score_prob", "opp_fg_prob",
         
-            "opp_safety_prob", "opp_td_prob", "fg_prob", "safety_prob", "td_prob",
+            "opp_safety_prob", "opp_td_prob", "safety_prob", "td_prob",
         
             "extra_point_prob", "two_point_conversion_prob",
         

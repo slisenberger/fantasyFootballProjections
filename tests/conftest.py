@@ -1,5 +1,6 @@
 import pytest
 import pandas as pd
+import numpy as np
 from unittest.mock import MagicMock
 from types import SimpleNamespace
 
@@ -103,6 +104,8 @@ def mock_player_stats():
         'scramble_rate_est': [0.1, 0.0, 0.0, 0.1, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.1, 0.1, 0.0, 0.0], # Corrected length
         'yards_per_scramble_est': [5.0, 0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 5.0, 0.0, 0.0], # Corrected length
         'relative_yards_per_scramble_est': [1.0] * 16,
+        'snap_share_est': [1.0] * 16, # Added
+        'fgoe_est': [0.0] * 16, # Added
         'starting_qb': [1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0], # Corrected length
         'kick_attempts': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
         'starting_k': [0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0], # Corrected length
@@ -161,20 +164,20 @@ def mock_models_for_game_state():
     # Ensure classes_ order matches expected indices in engine/game.py
     mock_playcall_model.classes_ = ['field_goal', 'pass', 'punt', 'run'] 
     # Provide a probability distribution matching the number of classes
-    mock_playcall_model.predict_proba.return_value = [[0.25, 0.25, 0.25, 0.25]] 
+    mock_playcall_model.predict_proba.return_value = np.array([[0.25, 0.25, 0.25, 0.25]])
     
     mock_kde = MagicMock()
-    mock_kde.sample.return_value = [[10]] # Default yardage
+    mock_kde.sample.return_value = np.array([[10]]) # Default yardage
     
-    mock_samples = [5.0] * 100
+    mock_samples = np.array([5.0] * 100)
 
     mock_field_goal_model = MagicMock()
     mock_field_goal_model.classes_ = ['made', 'missed']
-    mock_field_goal_model.predict_proba.return_value = [[0.8, 0.2]] # 80% chance to make FG
+    mock_field_goal_model.predict_proba.return_value = np.array([[0.8, 0.2]]) # 80% chance to make FG
 
     mock_completion_model = MagicMock()
     mock_completion_model.classes_ = [1, 0] # 1=Complete, 0=Incomplete
-    mock_completion_model.predict_proba.return_value = [[0.7, 0.3]] # 70% chance to complete pass
+    mock_completion_model.predict_proba.return_value = np.array([[0.7, 0.3]]) # 70% chance to complete pass
     
     return {
         "playcall_model": mock_playcall_model,

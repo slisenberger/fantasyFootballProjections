@@ -1012,21 +1012,43 @@ class GameState:
             self.is_outdoors
         ]
         base_probs = self.field_goal_model.predict_proba([model_input])[0]
+        
+        # FGOE Adjustment
+        k = self.choose_kicker()
+        try:
+            classes = list(self.field_goal_model.classes_)
+            made_idx = classes.index('made')
+            
+            if k:
+                fgoe = k.get("fgoe_est", 0.0)
+                # Add fgoe to 'made' probability
+                p_made = base_probs[made_idx]
+                new_p_made = max(0.0, min(1.0, p_made + fgoe))
+                
+                # Redistribute difference to other classes
+                if p_made < 1.0:
+                    factor = (1 - new_p_made) / (1 - p_made)
+                    base_probs = base_probs * factor
+                    base_probs[made_idx] = new_p_made
+        except ValueError:
+            pass # 'made' not found in classes
+
         good = random.choices(self.field_goal_model.classes_, weights=base_probs, k=1)[
             0
         ]
-        if good:
-            k = self.choose_kicker()
-            try:
-                k_id = k["player_id"]
-            except (IndexError, TypeError):
-                k_id = "Kicker_%s" % self.posteam
-            if kicking_yards <= 39:
-                self.fantasy_points[k_id] += self.rules.fg_0_39
-            elif kicking_yards <= 49:
-                self.fantasy_points[k_id] += self.rules.fg_40_49
-            else:
-                self.fantasy_points[k_id] += self.rules.fg_50_plus
+        if good == 'made':
+            if k:
+                try:
+                    k_id = k["player_id"]
+                except (IndexError, TypeError):
+                    k_id = "Kicker_%s" % self.posteam
+                
+                if kicking_yards <= 39:
+                    self.fantasy_points[k_id] += self.rules.fg_0_39
+                elif kicking_yards <= 49:
+                    self.fantasy_points[k_id] += self.rules.fg_40_49
+                else:
+                    self.fantasy_points[k_id] += self.rules.fg_50_plus
 
             if self.posteam == self.home_team:
                 self.home_score += 3
