@@ -1,6 +1,7 @@
 import pandas as pd
 import random
 from collections import defaultdict
+from typing import Dict, List, Optional, Any
 from enums import PlayType, Position
 from settings import ScoringSettings
 import pandas as pd
@@ -14,15 +15,15 @@ class GameState:
 
     def __init__(
         self,
-        models,
-        home_team,
-        away_team,
-        home_player_stats,
-        away_player_stats,
-        home_team_stats,
-        away_team_stats,
+        models: Dict[str, Any],
+        home_team: str,
+        away_team: str,
+        home_player_stats: pd.DataFrame,
+        away_player_stats: pd.DataFrame,
+        home_team_stats: pd.DataFrame,
+        away_team_stats: pd.DataFrame,
         rules: ScoringSettings,
-        trace=False
+        trace: bool = False
     ):
         # Names of the participating teams
         self.home_team = home_team

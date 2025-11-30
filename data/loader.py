@@ -44,9 +44,9 @@ def load_data(years):
         
             "play_type_nfl", "special_teams_play", "st_play_type", "fixed_drive",
         
-            "fixed_drive_result", "drive_real_start_time", "drive_play_count",
+            "fixed_drive_result", "drive_real_start_time", 
         
-            "drive_play_count", "div_game", "surface", "temp", "wind", "home_coach",
+            "div_game", "surface", "home_coach",
         
             "away_coach", "aborted_play", "stadium_id", "game_stadium",
         
@@ -86,6 +86,16 @@ def load_data(years):
 
     data.reset_index(drop=True, inplace=True)
     return data
+
+
+def load_snap_counts(years):
+    """Loads snap count data via nfl_client."""
+    return nfl_data_py.import_snap_counts(years)
+
+
+def load_participation_data(years):
+    """Loads participation data via nfl_client."""
+    return nfl_data_py.import_participation_data(years)
 
 
 # Downloads the pbp data to a local file. Updates

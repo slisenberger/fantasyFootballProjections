@@ -1,0 +1,42 @@
+# Project Context: Fantasy Football Projections
+
+## 🏗️ Architecture & Stack
+- **Domain:** Monte Carlo simulation of NFL games for fantasy projections.
+- **Stack:** Python 3.10+, Poetry, Pandas, Scikit-Learn, XGBoost, Joblib (Parallelism).
+- **Data Source:** `nflreadpy` (via `data/nfl_client.py`). Replaces legacy `nfl_data_py`.
+- **Key Components:**
+    - `engine/game.py`: The core physics engine (God Class). Implements "Trilogy of Simulation".
+    - `main.py`: Orchestrator with CLI subcommands.
+    - `settings.py`: Pydantic configuration.
+    - `stats/`: Data processing pipeline (Teams, Players, Estimators).
+    - `models/`: Machine Learning models (KDEs, Regressions, XGBoost).
+    - `benchmark.py`: Validation harness.
+
+## 📐 The "Trilogy of Simulation" Philosophy
+We model interactions using three layers to balance physical realism with player talent:
+1.  **Physics (Global KDE):** Captures the fundamental shape of an event (e.g., Scramble yards distribution).
+2.  **Skill (Relative Estimator):** Shifts/Scales the KDE based on player history relative to league average.
+    *   *Note:* For signed metrics (Air Yards), we use **Shifted Multiplicative Scaling**.
+3.  **Matchup (Team Estimator):** Adjusts for opponent strength (e.g., Defense Yards allowed).
+
+`Result = ((Sample + Shift) * Player_Mult) - Shift` (where Shift=0 for strictly positive metrics).
+
+## 📂 Directory Structure
+- `data/`: Data loading and caching (`loader.py`, `nfl_client.py`).
+- `engine/`: Simulation logic (`game.py`).
+- `models/`: ML model definitions and training (`playcall.py`, `rushers.py`, etc.).
+- `stats/`: Statistical aggregation and estimator calculation (`players.py`, `teams.py`).
+- `tests/`: Pytest suite (`verify_*.py`, `test_*.py`).
+- `benchmarks/`: JSON outputs of validation runs.
+
+## 🛠️ Key Commands
+- **Run Benchmark:** `uv run python benchmark.py --simulations 100 --version vXXX`
+- **Rebuild Models:** `uv run python rebuild_models.py --force [--fast]`
+- **Run Tests:** `uv run pytest`
+- **Lint:** `uv run ruff check .`
+
+## 🧠 Current State & Roadmap (Phase 0/1)
+- **Status:** `nflreadpy` migration complete. XGBoost playcall model implemented.
+- **Known Issue:** Calibration regression (RMSE ~24) due to "Fast Mode" training. Needs full rebuild.
+- **Active Phase:** Phase 0 (Foundation).
+    - **Next Steps:** Golden Master Test, Data Ingestion (Snaps/Vegas), Type Hints.
