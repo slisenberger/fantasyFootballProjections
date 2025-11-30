@@ -9,9 +9,27 @@ def _compute_estimator_vectorized(
     result_col_name: str, 
     time_col: str = 'week'
 ) -> pd.DataFrame:
-    """
-    Vectorized calculation of EWMA with prior seeding.
-    Ensures data is sorted by time before calculation.
+    """Vectorized calculation of Exponentially Weighted Moving Average (EWMA) with prior seeding.
+
+    This function is used to calculate smoothed, regressed estimates for player and team
+    statistics. It ensures data is sorted by time before calculation and seeds the EWMA
+    with a prior value to handle small sample sizes (Bayesian approach).
+
+    Args:
+        data (pd.DataFrame): The input DataFrame containing historical data.
+            Must contain `group_col`, `target_col`, and `time_col` (default 'week').
+            Optionally contains 'season'.
+        group_col (str): The column to group by (e.g., 'player_id', 'posteam').
+        target_col (str): The column representing the target variable for estimation.
+        span (int): The span parameter for the EWMA calculation (controls weighting).
+        priors_df (pd.DataFrame): A DataFrame containing prior values for each group.
+            Must contain `group_col` and `target_col`.
+        result_col_name (str): The name for the resulting estimator column.
+        time_col (str, optional): The column representing the time unit for sorting (default 'week').
+
+    Returns:
+        pd.DataFrame: A DataFrame with `group_col` and the calculated `result_col_name`
+                      representing the EWMA-smoothed estimator.
     """
     # Determine sort keys
     sort_cols = [group_col]

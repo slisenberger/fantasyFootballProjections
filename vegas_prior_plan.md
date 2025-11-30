@@ -2,14 +2,15 @@
 
 This plan leverages betting market data (`spread_line`, `total_line`) to anchor the simulation's starting state and strategic tendencies. This prevents the "Upset Bias" where the model treats a 14-point underdog as an equal peer.
 
-## 1. Data Ingestion (The "Hooks")
-*   **Status:** `data/nfl_client.py` loads `import_schedules` (which has lines). `loader.py` currently loads this but might drop it or not pass it effectively.
-*   **Action:** Ensure `spread_line` and `total_line` are preserved in `loader.py` and merged onto the `TeamStats` or `GameInfo` object passed to `GameState`.
+## 1. Data Ingestion (Complete)
+*   **Status:** **[Done]** (on master)
+*   **Action:** `spread_line` and `total_line` are now preserved in `loader.py` and available.
 
 ## 2. The "Effective Score" Logic (`engine/game.py`)
 **Goal:** Trick the `PlayCall` model into "knowing" who is the favorite without retraining it immediately.
 
 ### Step 2.1: The Initial State
+*   **Status:** **[Pending]**
 *   **Concept:** A game starting 0-0 with a -7.0 spread isn't really "Tied." The favorite is "Ahead by expectation."
 *   **Action:** Modify `GameState.score_differential()`:
     ```python
@@ -27,6 +28,7 @@ This plan leverages betting market data (`spread_line`, `total_line`) to anchor 
 *   **Why Decay?** As the game ends (`sec_remaining -> 0`), the *actual* score matters more than the pre-game line. In the final 2 minutes, we must play the actual score.
 
 ### Step 2.2: The "Shootout" Prior (Total Line)
+*   **Status:** **[Pending]**
 *   **Concept:** A `Total=54.0` game implies higher efficiency/tempo than `Total=38.0`.
 *   **Action:** Adjust `Tempo` (Seconds per play) and `Aggressiveness` (4th Down attempts).
     *   *Implementation:* `tempo_modifier = (self.vegas_total - 45.0) / 45.0`.

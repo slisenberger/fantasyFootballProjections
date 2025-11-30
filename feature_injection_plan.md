@@ -6,6 +6,7 @@ This plan details the specific code modifications required to inject the new hig
 *Target: Better decision making in "Shootout" vs "Blowout" scripts.*
 
 ### Step 1.1: Train with New Features (`models/playcall.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `feature_cols` list in `build_playcall_model`.
 *   **Action:** Append new features.
     ```python
@@ -20,9 +21,10 @@ This plan details the specific code modifications required to inject the new hig
         "drive_play_count"  # Tempo (Fatigue/Pace)
     ]
     ```
-*   **Data Loading:** Ensure `loader.load_data` provides these columns (already identified in `data_inventory.md` as existing but dropped).
+*   **Data Loading:** Ensure `loader.load_data` provides these columns (already identified in `data_inventory.md` as existing and now loaded).
 
 ### Step 1.2: Simulate with New Features (`engine/game.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `choose_playcall` method.
 *   **Action:** Update `model_input` construction.
     ```python
@@ -44,6 +46,7 @@ This plan details the specific code modifications required to inject the new hig
 *Target: Better accuracy on "Checkdowns" vs "Deep Shots" under pressure.*
 
 ### Step 2.1: Train with New Features (`models/completion.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `feature_cols` list in `build_completion_model`.
 *   **Action:** Append Pressure/Defense features.
     ```python
@@ -58,6 +61,7 @@ This plan details the specific code modifications required to inject the new hig
     ```
 
 ### Step 2.2: Simulate with New Features (`engine/game.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `is_complete` method.
 *   **Action:** Update `model_input`.
     ```python
@@ -72,6 +76,7 @@ This plan details the specific code modifications required to inject the new hig
 *Target: Realistic Field Goal percentage in bad weather.*
 
 ### Step 3.1: Train with New Features (`models/kicking.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `feature_cols` list.
 *   **Action:** Add Environmental features.
     ```python
@@ -81,6 +86,7 @@ This plan details the specific code modifications required to inject the new hig
     *   *Note:* `roof` column in PBP needs to be converted to `is_outdoors`.
 
 ### Step 3.2: Simulate with New Features (`engine/game.py`)
+*   **Status:** **[Pending]**
 *   **Hook Point:** `field_goal` method.
 *   **Action:** Update `model_input`.
     ```python
@@ -94,6 +100,7 @@ This plan details the specific code modifications required to inject the new hig
 *These changes are required to transport the data from `main.py` to the `GameState`.*
 
 ### Step 4.1: `GameState` Constructor
+*   **Status:** **[Pending]**
 *   **File:** `engine/game.py`
 *   **Action:** Add `game_info` dictionary to `__init__`.
     ```python
@@ -105,6 +112,7 @@ This plan details the specific code modifications required to inject the new hig
     ```
 
 ### Step 4.2: `GameBuilder`
+*   **Status:** **[Pending]**
 *   **File:** `engine/builder.py` (Planned) or `main.py` (Current).
 *   **Action:** Extract these fields from the Schedule/PBP dataframe and pass them to `GameState`.
 

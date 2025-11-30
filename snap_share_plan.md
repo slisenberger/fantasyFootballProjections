@@ -2,9 +2,9 @@
 
 This plan details the integration of snap count data to move from "Roster Assumption" to "Participation Probability." This is a foundational step for the Target Share model and Fatigue Logic.
 
-## 1. Data Ingestion (Complete)
-*   **Done:** `data/loader.py` now loads `import_snap_counts` and returns `player_season_snaps`.
-*   **Context:** We have granular snap data (snaps per game) which we aggregated to season totals in the loader.
+## 1. Data Ingestion (Done)
+*   **Status:** **[Done]** (on master)
+*   **Details:** `data/loader.py` now calls `import_snap_counts` and returns `player_season_snaps` (aggregated by season). We have the raw material.
 
 ## 2. Statistical Estimation (`stats/players.py`)
 **Goal:** Create a `snap_share_est` metric for every player, similar to `target_share_est`.
@@ -13,7 +13,7 @@ This plan details the integration of snap count data to move from "Roster Assump
 *   **Action:** In `calculate_weekly`, merge the raw `snap_counts` (per game) with the player's weekly stats.
 *   **Metric:** `snap_percentage = player_snaps / team_offensive_snaps`.
 *   **Challenge:** We need `team_offensive_snaps` for every game.
-    *   *Source:* `nfl_data_py.import_schedules` often has this, or we aggregate `snap_counts` for all offensive players in a game and take the max (usually the Center or QB snap count = 100%).
+    *   *Source:* We can aggregate `snap_counts` for all offensive players in a game and take the max (usually the Center or QB snap count = 100%) or sum up plays from PBP.
 
 ### Step 2.2: The Bayesian Snap Estimator
 *   **Action:** Create `compute_snap_share_estimator` in `stats/players.py`.
@@ -39,6 +39,12 @@ This plan details the integration of snap count data to move from "Roster Assump
 
 ## Git Commit Strategy
 
-- **Commit 1:** `feat(stats): calculate weekly snap percentages in players.py`
-- **Commit 2:** `feat(stats): implement EWMA snap_share_estimator`
-- **Commit 3:** `feat(engine): implement probabilistic eligibility filter based on snap share`
+### Phase 0: Data Ingestion
+- **Commit 0.1:** `feat(data): ingest snap_counts in loader` **[Done]**
+
+### Phase 1: Stats Estimation
+- **Commit 1.1:** `feat(stats): calculate weekly snap percentages in players.py`
+- **Commit 1.2:** `feat(stats): implement EWMA snap_share_estimator`
+
+### Phase 2: Engine Integration
+- **Commit 2.1:** `feat(engine): implement probabilistic eligibility filter based on snap share`

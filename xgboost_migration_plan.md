@@ -6,18 +6,21 @@ This plan prioritizes **Development Velocity**. We will perform an in-place swap
 **Goal:** Reduce model training time from minutes to seconds while maintaining 100% compatibility with the current engine.
 
 ### Step 1.1: Dependency Management
-*   **Action:** Add `xgboost` to the project.
-*   **Command:** `poetry add xgboost`
+*   **Status:** **[Done]** (on master)
+*   **Action:** Ensure `xgboost` is installed.
+*   **Command:** `uv sync` (Dependencies were already in `pyproject.toml` and are now synchronized).
 
 ### Step 1.2: Replace the Estimator
-*   **File:** `models/playcall.py`
+*   **Status:** **[Done]** (on master)
+*   **File:** `models/playcall.py`, `models/completion.py`, `models/kicking.py`
 *   **Action:**
     *   Import `xgboost.XGBClassifier`.
-    *   Replace `LogisticRegression(max_iter=10000)` with `XGBClassifier(n_estimators=100, max_depth=4, eval_metric='mlogloss')`.
+    *   Replace `LogisticRegression(max_iter=10000)` with `XGBClassifier(n_estimators=100, max_depth=4, eval_metric='mlogloss')` (or `logloss` for binary).
     *   **Crucial:** Keep `feature_cols` exactly the same.
 *   **Benefit:** `XGBClassifier` implements the same scikit-learn `fit/predict_proba` interface. `engine/game.py` won't know the difference, but training will be 10x faster.
 
 ### Step 1.3: Verify Sanity
+*   **Status:** **[Done]** (on master)
 *   **Action:** Run `python models/playcall.py` (if runnable) or a simple script to train it.
 *   **Check:** Ensure `predict_proba` still returns valid probabilities.
 
@@ -48,8 +51,8 @@ This plan prioritizes **Development Velocity**. We will perform an in-place swap
 ## Git Commit Strategy
 
 ### Phase 1: The Swap
-- **Commit 1.1:** `build: add xgboost dependency`
-- **Commit 1.2:** `refactor(models): replace LogisticRegression with XGBClassifier in playcall.py`
+- **Commit 1.1:** `build: add xgboost dependency` **[Done]**
+- **Commit 1.2:** `refactor(models): replace LogisticRegression with XGBClassifier in playcall.py` **[Done]**
 
 ### Phase 2: The Features
 - **Commit 2.1:** `feat(models): add vegas features to playcall model`

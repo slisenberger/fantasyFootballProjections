@@ -6,6 +6,14 @@ from stats.util import _compute_estimator_vectorized
 # These must be defined before `calculate` calls them.
 
 def compute_offense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for offensive Pass Over Expectation (POE).
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'posteam' and 'pass_oe'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'offense_pass_oe_est' columns.
+    """
     poe_prior = 0
     poe_span = 500
     priors_df = data[['posteam']].drop_duplicates().copy()
@@ -13,6 +21,14 @@ def compute_offense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(data, 'posteam', 'pass_oe', poe_span, priors_df, 'offense_pass_oe_est', time_col='week').rename(columns={'posteam': 'team'})
 
 def compute_defense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Pass Over Expectation (POE).
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam' and 'pass_oe'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_pass_oe_est' columns.
+    """
     poe_prior = 0
     poe_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
@@ -20,6 +36,14 @@ def compute_defense_poe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(data, 'defteam', 'pass_oe', poe_span, priors_df, 'defense_pass_oe_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_defense_cpoe_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Completion Percentage Over Expectation (CPOE).
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam' and 'cpoe'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_cpoe_est' columns.
+    """
     cpoe_prior = 0
     cpoe_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
@@ -27,6 +51,14 @@ def compute_defense_cpoe_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(data, 'defteam', 'cpoe', cpoe_span, priors_df, 'defense_cpoe_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_defense_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Yards After Catch (YAC) allowed.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam' and 'yards_after_catch'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_yac_est' columns.
+    """
     yac_prior = data["yards_after_catch"].mean()
     yac_span = 500
     priors_df = data[['defteam']].drop_duplicates().copy()
@@ -34,6 +66,14 @@ def compute_defense_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(data, 'defteam', 'yards_after_catch', yac_span, priors_df, 'defense_yac_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_defense_ypc_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Yards Per Carry (YPC) allowed.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam' and 'rushing_yards'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_ypc_est' columns.
+    """
     data_filtered = data.loc[data.rush == 1].copy()
     ypc_prior = data_filtered["rushing_yards"].mean()
     ypc_span = 500
@@ -42,6 +82,14 @@ def compute_defense_ypc_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(data_filtered, 'defteam', 'rushing_yards', ypc_span, priors_df, 'defense_ypc_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_defense_int_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Interception Rate.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam', 'pass', and 'interception'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_int_rate_est' columns.
+    """
     pass_plays = data.loc[data["pass"] == 1].copy()
     int_prior = (pass_plays.loc[pass_plays.interception == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     int_span = 1000
@@ -50,6 +98,14 @@ def compute_defense_int_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(pass_plays, 'defteam', 'interception', int_span, priors_df, 'defense_int_rate_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_defense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for defensive Sack Rate.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'defteam', 'pass', and 'sack'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'defense_sack_rate_est' columns.
+    """
     pass_plays = data.loc[data["pass"] == 1].copy()
     sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     sack_span = 1000
@@ -58,6 +114,14 @@ def compute_defense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     return _compute_estimator_vectorized(pass_plays, 'defteam', 'sack', sack_span, priors_df, 'defense_sack_rate_est', time_col='week').rename(columns={'defteam': 'team'})
 
 def compute_offense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for offensive Sack Rate.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'posteam', 'pass', and 'sack'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'offense_sack_rate_est' columns.
+    """
     pass_plays = data.loc[data["pass"] == 1].copy()
     sack_prior = (pass_plays.loc[pass_plays.sack == 1].shape[0] / pass_plays.shape[0]) if pass_plays.shape[0] > 0 else 0
     sack_span = 1000
@@ -68,6 +132,21 @@ def compute_offense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
 
 # Calculate team statistics that are used to determine tendencies.
 def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
+    """Calculates various team-level statistics and EWMA-smoothed estimators.
+
+    Args:
+        data (pd.DataFrame): Raw play-by-play data (PBP).
+            Expected columns include: 'play_type', 'rush', 'yards_after_catch',
+            'air_yards', 'interception', 'sack', 'posteam', 'defteam', 'pass_oe',
+            'cpoe', 'yardline_100', 'receiver_player_id', 'rusher_player_id',
+            'qb_hit', 'tackled_for_loss', 'penalty_type', 'penalty', 'week'.
+        season (int): The current season for which to calculate team stats.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing calculated team statistics and estimators,
+                      including offensive/defensive efficiency, pressure rates, and
+                      relative metrics compared to league averages.
+    """
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run"]))]
     data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
 
@@ -411,7 +490,20 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
     return team_stats
 
 
-def calculate_weekly(data, season):
+def calculate_weekly(data: pd.DataFrame, season: int) -> pd.DataFrame:
+    """Calculates weekly team-level statistics for targets, carries, and redzone attempts.
+
+    Aggregates play-by-play data on a weekly basis to provide team-level volume metrics.
+
+    Args:
+        data (pd.DataFrame): Raw play-by-play data (PBP).
+            Expected columns include: 'play_type', 'rush', 'receiver_player_id',
+            'rusher_player_id', 'yardline_100', 'season', 'posteam', 'week'.
+        season (int): The current season for which to calculate weekly team stats.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing weekly team statistics.
+    """
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values(['season', 'week'])
     targets_weekly = (
