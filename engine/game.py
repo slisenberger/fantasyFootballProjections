@@ -44,6 +44,7 @@ class GameState:
         home_team_stats: pd.DataFrame,
         away_team_stats: pd.DataFrame,
         rules: ScoringSettings,
+        game_info: Dict[str, Any] = {},
         trace: bool = False
     ):
         """Initializes the GameState with teams, stats, and models.
@@ -57,11 +58,16 @@ class GameState:
             home_team_stats: DataFrame of home team stats (defensive/offensive profiles).
             away_team_stats: DataFrame of away team stats.
             rules: ScoringSettings object defining fantasy point values.
+            game_info: Dictionary containing game-specific context (wind, roof, etc).
             trace: If True, records a log of every play.
         """
         # Names of the participating teams
         self.home_team = home_team
         self.away_team = away_team
+        # Game Info
+        self.wind = game_info.get("wind", 0.0)
+        self.is_outdoors = game_info.get("is_outdoors", 1)
+        
         # Current team possessing the ball
         self.posteam = None
         # Current quarter
@@ -645,7 +651,6 @@ class GameState:
             bool: True if the team is winning, False otherwise.
         """
         if self.home_team == team:
-        if self.home_team == team:
             return self.home_score > self.away_score
         else:
             return self.away_score > self.home_score
@@ -971,6 +976,8 @@ class GameState:
             self.sec_remaining,
             self.quarter,
             kicking_yards,
+            self.wind,
+            self.is_outdoors
         ]
         base_probs = self.field_goal_model.predict_proba([model_input])[0]
         good = random.choices(self.field_goal_model.classes_, weights=base_probs, k=1)[
@@ -1067,7 +1074,7 @@ class GameState:
         COMPLETE_INDEX = 1
         INCOMPLETE_INDEX = 0
         # Baseline -- Use a logistic regression model to choose a playtype.
-        model_input = [self.down, self.yds_to_go, self.yard_line, air_yards]
+        model_input = [self.down, self.yds_to_go, self.yard_line, air_yards, self.wind, self.is_outdoors]
 
         base_probs = self.completion_model.predict_proba([model_input])[0]
 

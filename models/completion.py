@@ -2,6 +2,7 @@ import pandas as pd
 import joblib
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
+from data import loader
 
 model_name = "models/trained_models/completion_regression_model"
 
@@ -18,14 +19,20 @@ def build_or_load_completion_model():
 # Produces a model from logistic regression that produces the probability of a completion.
 def build_completion_model():
     # get the baseline data
-    YEARS = [2016, 2017, 2018, 2019, 2020, 2021]
-    data = pd.DataFrame()
-    for i in YEARS:
-        i_data = pd.read_csv(
-            "data/pbp_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
-        )
+    YEARS = [2019, 2020, 2021, 2022, 2023]
+    data = loader.load_data(YEARS)
+    
+    # Enrich with weather features
+    if 'roof' in data.columns:
+        data['is_outdoors'] = data['roof'].apply(lambda x: 1 if x in ['outdoors', 'open'] else 0)
+    else:
+        data['is_outdoors'] = 1 # Default to outdoors
+        
+    if 'wind' in data.columns:
+        data['wind'] = data['wind'].fillna(0).astype(float)
+    else:
+        data['wind'] = 0.0
 
-        data = pd.concat([data, i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = (
         data.loc[(data.play_type.isin(["pass"]))]
@@ -34,13 +41,17 @@ def build_completion_model():
         .loc[data.sack == 0]
         .loc[data.fumble == 0]
     )
-    feature_cols = ["down", "ydstogo", "yardline_100", "air_yards"]
+    feature_cols = ["down", "ydstogo", "yardline_100", "air_yards", "wind", "is_outdoors"]
     label_col = ["complete_pass"]
+    
+    # Fill NaNs in features
+    for col in feature_cols:
+        meaningful_plays[col] = meaningful_plays[col].fillna(0)
+        
     cleaned_plays = meaningful_plays[feature_cols + label_col].dropna()
     X = cleaned_plays[feature_cols]
-    X_nan = X[X.isna().any(axis=1)]
     Y = cleaned_plays[label_col]
-    print(X_nan)
+    
     # Split the data randomly
     X_train, X_test, Y_train, Y_test = train_test_split(X, Y, test_size=0.25)
 

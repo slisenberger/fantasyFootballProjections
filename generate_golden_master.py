@@ -104,6 +104,13 @@ def generate():
     home_team_stats = team_stats[team_stats["team"].isin([HOME])]
     away_team_stats = team_stats[team_stats["team"].isin([AWAY])]
     
+    # Extract Game Info from Schedule
+    game_row = schedules.loc[(schedules.week == WEEK) & (schedules.home_team == HOME)].iloc[0]
+    game_info = {
+        "wind": float(game_row.get("wind", 0)) if pd.notna(game_row.get("wind")) else 0.0,
+        "is_outdoors": 1 if game_row.get("roof") in ['outdoors', 'open'] else 0
+    }
+    
     game_machine = game.GameState(
         models,
         HOME,
@@ -113,6 +120,7 @@ def generate():
         home_team_stats,
         away_team_stats,
         rules=config.scoring,
+        game_info=game_info,
         trace=False # No trace for golden master, just output
     )
     scores, log = game_machine.play_game()

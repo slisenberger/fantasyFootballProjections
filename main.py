@@ -123,16 +123,21 @@ def project_week(data, snap_data, models, season, week, config):
         game_stats = game_stats.loc[~(game_stats.exp_return > gameday_time)]
         game_stats.loc[game_stats.status == "Questionable"]
         
+        game_info = {
+            "wind": float(row.get("wind", 0)) if pd.notna(row.get("wind")) else 0.0,
+            "is_outdoors": 1 if row.get("roof") in ['outdoors', 'open'] else 0
+        }
+        
         if config.runtime.use_parallel:
             projections = Parallel(n_jobs=-1)(
                 delayed(project_game)(
-                    models, game_stats, team_stats, row.home_team, row.away_team, week, config
+                    models, game_stats, team_stats, row.home_team, row.away_team, week, config, game_info
                 )
                 for i in range(n)
             )
         else:
             projections = [
-                project_game(models, game_stats, team_stats, row.home_team, row.away_team, week, config)
+                project_game(models, game_stats, team_stats, row.home_team, row.away_team, week, config, game_info)
                 for i in range(n)
             ]
 
@@ -147,7 +152,7 @@ def project_week(data, snap_data, models, season, week, config):
     return proj_df
 
 
-def project_game(models, player_stats, team_stats, home, away, week, config):
+def project_game(models, player_stats, team_stats, home, away, week, config, game_info={}):
     # Apply Probabilistic Injury Logic
     # Logic: Q players have 25% chance of being scratch (removed), 
     # and if active, 20% volume reduction (limited/decoy risk).
@@ -184,6 +189,7 @@ def project_game(models, player_stats, team_stats, home, away, week, config):
         home_team_stats,
         away_team_stats,
         rules=config.scoring,
+        game_info=game_info,
         trace=False
     )
     scores, _ = game_machine.play_game()

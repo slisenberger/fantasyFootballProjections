@@ -3,6 +3,7 @@ import joblib
 from xgboost import XGBClassifier
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from data import loader
 
 model_name = "models/trained_models/kicking_regression_model"
 
@@ -32,17 +33,23 @@ def build_or_load_kicking_model():
         return model
 
 
-# Produces a model from logistic regression that predicts kick accuracy.
+# Produces a model from XGBoost that predicts kick accuracy.
 def build_kicking_model():
     # get the baseline data
     YEARS = [2019, 2020, 2021, 2022, 2023]
-    data = pd.DataFrame()
-    for i in YEARS:
-        i_data = pd.read_csv(
-            "data/pbp_" + str(i) + ".csv.gz", compression="gzip", low_memory=False
-        )
+    data = loader.load_data(YEARS)
+    
+    # Enrich with weather features
+    if 'roof' in data.columns:
+        data['is_outdoors'] = data['roof'].apply(lambda x: 1 if x in ['outdoors', 'open'] else 0)
+    else:
+        data['is_outdoors'] = 1 # Default to outdoors if missing
+        
+    if 'wind' in data.columns:
+        data['wind'] = data['wind'].fillna(0).astype(float)
+    else:
+        data['wind'] = 0.0
 
-        data = pd.concat([data, i_data], sort=True)
     data.reset_index(drop=True, inplace=True)
     meaningful_plays = data.loc[data.play_type.isin(["field_goal"])]
     feature_cols = [
@@ -50,11 +57,16 @@ def build_kicking_model():
         "quarter_seconds_remaining",
         "qtr",
         "kick_distance",
+        "wind",
+        "is_outdoors"
     ]
+    # Fill NaNs in features
+    meaningful_plays = meaningful_plays.copy() # Avoid SettingWithCopy
+    for col in feature_cols:
+        meaningful_plays[col] = meaningful_plays[col].fillna(0)
+
     X = meaningful_plays[feature_cols]
-    X_nan = X[X.isna().any(axis=1)]
     Y = meaningful_plays["field_goal_result"]
-    print(X_nan)
     
     # Encode targets
     le = LabelEncoder()
