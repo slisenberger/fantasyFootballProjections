@@ -27,7 +27,7 @@ This document supersedes individual plans as the primary execution schedule. It 
 *Goal: Replace "Linear & Heuristic" with "Gradient Boosted & Contextual".*
 
 ### 1.1 The XGBoost Play Caller (XGBoost Plan)
-*   **Status:** **[Done in Branch]** (`feat/xgboost-full-migration`).
+*   **Status:** **[Done]**
 *   **Next Step:** **Feature Injection.**
     *   *Input:* Vegas Lines, Score Diff, Down, Dist, Time.
     *   *Action:* Update `models/playcall.py` feature list and `engine/game.py` input vector.

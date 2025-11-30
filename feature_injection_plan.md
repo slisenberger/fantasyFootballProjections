@@ -6,14 +6,10 @@ This plan details the specific code modifications required to inject the new hig
 *Target: Better decision making in "Shootout" vs "Blowout" scripts.*
 
 ### Step 1.1: Train with New Features (`models/playcall.py`)
-*   **Status:** **[Pending]**
+*   **Status:** **[Done]**
 *   **Hook Point:** `feature_cols` list in `build_playcall_model`.
 *   **Action:** Append new features.
     ```python
-    # Current
-    feature_cols = ["down", "ydstogo", "score_differential", "quarter_seconds_remaining", "qtr", "yardline_100"]
-    
-    # New
     feature_cols = [
         "down", "ydstogo", "score_differential", "quarter_seconds_remaining", "qtr", "yardline_100",
         "total_line",       # Vegas (Game Script)
@@ -24,14 +20,10 @@ This plan details the specific code modifications required to inject the new hig
 *   **Data Loading:** Ensure `loader.load_data` provides these columns (already identified in `data_inventory.md` as existing and now loaded).
 
 ### Step 1.2: Simulate with New Features (`engine/game.py`)
-*   **Status:** **[Pending]**
+*   **Status:** **[Done]**
 *   **Hook Point:** `choose_playcall` method.
 *   **Action:** Update `model_input` construction.
     ```python
-    # Current
-    model_input = [self.down, self.yds_to_go, self.score_differential(), self.sec_remaining, self.quarter, self.yard_line]
-    
-    # New
     model_input = [
         self.down, self.yds_to_go, self.score_differential(), self.sec_remaining, self.quarter, self.yard_line,
         self.vegas_total,   # Passed into GameState

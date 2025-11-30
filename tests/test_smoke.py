@@ -24,8 +24,8 @@ def mock_external_data_and_models(mock_models_for_game_state, mock_pbp_data, moc
 
         # Mock schedule
         mock_schedules.return_value = pd.DataFrame([
-            {'season': 2024, 'week': 1, 'gameday': '2024-09-08', 'home_team': 'MIA', 'away_team': 'BUF', 'game_id': '2024_01_BUF_MIA', 'wind': 10, 'roof': 'outdoors'},
-            {'season': 2018, 'week': 8, 'gameday': '2018-10-21', 'home_team': 'ERI', 'away_team': 'GEN', 'game_id': '2018_08_GEN_ERI', 'wind': 0, 'roof': 'dome'}
+            {'season': 2024, 'week': 1, 'gameday': '2024-09-08', 'home_team': 'MIA', 'away_team': 'BUF', 'game_id': '2024_01_BUF_MIA', 'wind': 10, 'roof': 'outdoors', 'total_line': 50.5, 'spread_line': -2.5},
+            {'season': 2018, 'week': 8, 'gameday': '2018-10-21', 'home_team': 'ERI', 'away_team': 'GEN', 'game_id': '2018_08_GEN_ERI', 'wind': 0, 'roof': 'dome', 'total_line': 40.0, 'spread_line': 7.0}
         ])
 
         # Mock roster data

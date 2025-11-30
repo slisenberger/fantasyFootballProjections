@@ -108,7 +108,9 @@ def generate():
     game_row = schedules.loc[(schedules.week == WEEK) & (schedules.home_team == HOME)].iloc[0]
     game_info = {
         "wind": float(game_row.get("wind", 0)) if pd.notna(game_row.get("wind")) else 0.0,
-        "is_outdoors": 1 if game_row.get("roof") in ['outdoors', 'open'] else 0
+        "is_outdoors": 1 if game_row.get("roof") in ['outdoors', 'open'] else 0,
+        "total_line": float(game_row.get("total_line", 45.0)) if pd.notna(game_row.get("total_line")) else 45.0,
+        "spread_line": float(game_row.get("spread_line", 0.0)) if pd.notna(game_row.get("spread_line")) else 0.0,
     }
     
     game_machine = game.GameState(

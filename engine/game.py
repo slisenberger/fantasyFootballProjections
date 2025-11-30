@@ -67,6 +67,11 @@ class GameState:
         # Game Info
         self.wind = game_info.get("wind", 0.0)
         self.is_outdoors = game_info.get("is_outdoors", 1)
+        self.vegas_total = game_info.get("total_line", 45.0) # Default for generic game if missing
+        self.vegas_spread = game_info.get("spread_line", 0.0) # Default to pick'em if missing
+        
+        # Drive-specific stats
+        self.drive_play_count = 1
         
         # Current team possessing the ball
         self.posteam = None
@@ -274,6 +279,7 @@ class GameState:
         self.change_possession()
         self.yard_line = 75
         self.first_down()
+        self.drive_play_count = 1
 
     def advance_snap(self) -> None:
         """Executes a single play (snap) and updates the game state.
@@ -500,10 +506,31 @@ class GameState:
                 'play_type': playcall.name,
                 'yards': yards,
                 'is_complete': is_complete,
-                'player_id': pid
+                'player_id': pid,
+                'drive_play_count': self.drive_play_count # Add to log
             })
 
         self.advance_clock(playcall, sack, is_complete, scramble)
+        self.drive_play_count += 1 # Increment after play
+
+    def extra_point(self) -> bool:
+        """Simulates an extra point attempt.
+
+        Returns:
+            bool: True if the extra point is good, False otherwise.
+        """
+        # Arbitrary value chosen from google. In future, compute this from lg avg or model.
+        chance = 0.93
+        good = False
+        if random.random() < chance:
+            if self.posteam == self.home_team:
+                self.home_score += 1
+            else:
+                self.away_score += 1
+            good = True
+
+        self.kickoff()
+        return good
 
     def extra_point(self) -> bool:
         """Simulates an extra point attempt.
@@ -668,11 +695,13 @@ class GameState:
 
         self.yard_line = 100 - self.yard_line
         self.first_down()
+        self.drive_play_count = 1
 
     def first_down(self):
         """Resets down and distance for a first down."""
         self.down = 1
         self.yds_to_go = 10 if self.yard_line >= 10 else self.yard_line
+        self.drive_play_count = 1
 
     def half_time(self) -> None:
         """Handles half-time procedures, including possession change and field position reset."""
@@ -710,6 +739,9 @@ class GameState:
             self.sec_remaining,
             self.quarter,
             self.yard_line,
+            self.vegas_total,
+            self.vegas_spread,
+            self.drive_play_count,
         ]
         try:
             base_probs = self.playcall_model.predict_proba([model_input])[0]
