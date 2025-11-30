@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Any, Tuple
 from enums import PlayType, Position
 from settings import ScoringSettings
 import pandas as pd
-
+import numpy as np # Added
 
 # I think the API I want is something like: result = advance_snap(game_state)
 # The gamestate would itself be update, a synthetic play would be generated, and this can be used in
@@ -760,6 +760,64 @@ class GameState:
         base_probs[RUN_INDEX] -= defense_pass_oe
         base_probs[RUN_INDEX] -= offense_pass_oe
 
+        # NEW: 4th Down Aggressiveness Adjustment
+        if self.down == 4:
+            go_for_it_oe = pos_stats.get("offense_go_for_it_rate_est", 0.0)
+            
+            # Map classes to indices dynamically
+            classes = list(self.playcall_model.classes_)
+            fg_idx = classes.index('field_goal')
+            pass_idx = classes.index('pass')
+            punt_idx = classes.index('punt')
+            run_idx = classes.index('run')
+
+            p_run_pass_combined = base_probs[run_idx] + base_probs[pass_idx]
+            p_fg_punt_combined = base_probs[fg_idx] + base_probs[punt_idx]
+            
+            # Ensure no division by zero if all probabilities for a group are zero
+            run_pass_ratio = base_probs[run_idx] / p_run_pass_combined if p_run_pass_combined > 0 else 0.5
+            pass_run_ratio = base_probs[pass_idx] / p_run_pass_combined if p_run_pass_combined > 0 else 0.5
+            fg_punt_ratio_fg = base_probs[fg_idx] / p_fg_punt_combined if p_fg_punt_combined > 0 else 0.5
+            fg_punt_ratio_punt = base_probs[punt_idx] / p_fg_punt_combined if p_fg_punt_combined > 0 else 0.5
+
+
+            # Shift amount is proportional to the OE value. Max shift could be 1.0 (100%)
+            # We scale it down to prevent over-adjustment, e.g., max 20% shift
+            scaled_shift_amount = go_for_it_oe * 0.2 # Tune this scaling factor (e.g., 0.2)
+            
+            # Always operate on probabilities directly and ensure they stay within [0, 1]
+            if scaled_shift_amount > 0: # More aggressive: shift from FG/Punt to Run/Pass
+                
+                # Max amount we can take from FG/Punt side
+                max_take = p_fg_punt_combined
+                
+                # Actual amount to shift, limited by max_take
+                actual_shift = min(scaled_shift_amount, max_take)
+                
+                # Apply the shift
+                base_probs[run_idx] += actual_shift * run_pass_ratio
+                base_probs[pass_idx] += actual_shift * pass_run_ratio
+                base_probs[fg_idx] -= actual_shift * fg_punt_ratio_fg
+                base_probs[punt_idx] -= actual_shift * fg_punt_ratio_punt
+                
+            elif scaled_shift_amount < 0: # More conservative: shift from Run/Pass to FG/Punt
+                
+                # Max amount we can take from Run/Pass side
+                max_take = p_run_pass_combined
+                
+                # Actual amount to shift, limited by max_take
+                actual_shift = min(abs(scaled_shift_amount), max_take)
+                
+                # Apply the shift
+                base_probs[run_idx] -= actual_shift * run_pass_ratio
+                base_probs[pass_idx] -= actual_shift * pass_run_ratio
+                base_probs[fg_idx] += actual_shift * fg_punt_ratio_fg
+                base_probs[punt_idx] += actual_shift * fg_punt_ratio_punt
+            
+            # Ensure probabilities sum to 1 and are not negative after adjustments
+            base_probs = np.clip(base_probs, 0, None) # Ensure no negative probabilities
+            base_probs = base_probs / np.sum(base_probs) # Re-normalize
+            
         playcall_str = random.choices(
             self.playcall_model.classes_,
             weights=base_probs,

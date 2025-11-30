@@ -129,6 +129,52 @@ def compute_offense_sack_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
     priors_df['sack'] = sack_prior
     return _compute_estimator_vectorized(pass_plays, 'posteam', 'sack', sack_span, priors_df, 'offense_sack_rate_est', time_col='week').rename(columns={'posteam': 'team'})
 
+def compute_offense_go_for_it_rate_estimator(data: pd.DataFrame) -> pd.DataFrame:
+    """Computes an EWMA estimator for offensive 'Go For It' Rate Over Expected.
+
+    This captures a team's aggressiveness on 4th downs, relative to the league average.
+
+    Args:
+        data (pd.DataFrame): Play-by-play data including 'posteam', 'down', 'play_type', 'week'.
+
+    Returns:
+        pd.DataFrame: DataFrame with 'team' and 'offense_go_for_it_rate_est' columns.
+    """
+    fourth_down_plays = data.loc[data.down == 4].copy()
+    
+    if fourth_down_plays.empty:
+        # Return an empty DataFrame with the correct columns if no 4th down plays exist
+        return pd.DataFrame(columns=['team', 'offense_go_for_it_rate_est'])
+
+    # Calculate actual 'go_for_it' for each 4th down play
+    fourth_down_plays['go_for_it'] = fourth_down_plays['play_type'].apply(lambda x: 1 if x in ['pass', 'run'] else 0)
+    
+    # League average 'go_for_it' rate on 4th down
+    lg_go_rate = fourth_down_plays['go_for_it'].mean()
+    
+    go_prior = lg_go_rate
+    go_span = 50 # Adjust faster for coaching changes (e.g., ~3 seasons of 16 games)
+    
+    # Ensure 'posteam' and 'go_for_it' are present for priors_df
+    priors_df = fourth_down_plays[['posteam']].drop_duplicates().copy()
+    priors_df['go_for_it'] = go_prior
+    
+    go_for_it_est = _compute_estimator_vectorized(
+        fourth_down_plays,
+        'posteam',
+        'go_for_it',
+        go_span,
+        priors_df,
+        'offense_go_for_it_rate_est_raw', # Raw value
+        time_col='week'
+    ).rename(columns={'posteam': 'team'})
+
+    # Calculate "Over Expected" relative to league average
+    # A positive value means the team goes for it more than the league average.
+    go_for_it_est['offense_go_for_it_rate_est'] = go_for_it_est['offense_go_for_it_rate_est_raw'] - lg_go_rate
+    
+    return go_for_it_est[['team', 'offense_go_for_it_rate_est']]
+
 
 # Calculate team statistics that are used to determine tendencies.
 def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
@@ -147,7 +193,7 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
                       including offensive/defensive efficiency, pressure rates, and
                       relative metrics compared to league averages.
     """
-    data = data.loc[(data.play_type.isin(["no_play", "pass", "run"]))]
+    data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal", "punt"]))] # Include punt for 4th down plays
     data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
 
     lg_avg_ypc = data.loc[data.rush == 1]["rushing_yards"].mean()
@@ -387,6 +433,7 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"posteam": "team"})
     )
+    go_for_it_est = compute_offense_go_for_it_rate_estimator(data)
 
     all_teams = pd.DataFrame(
         pd.concat([data["posteam"], data["defteam"]]).dropna().unique(),
@@ -425,6 +472,7 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
         .merge(off_tfl, how="left", on="team")
         .merge(def_holds_drawn, how="left", on="team")
         .merge(off_holds_drawn, how="left", on="team")
+        .merge(go_for_it_est, on="team", how="left") # Added
     )
 
     team_stats["offense_pen_rate"] = (

@@ -46,7 +46,13 @@ This document supersedes individual plans as the primary execution schedule. It 
 *   **Action:** Implement a Field Goal Over Expected (FGOE) estimator for kickers to calibrate their individual skill.
 *   **Value:** Improved kicker calibration and fixing a critical bug where missed FGs were incorrectly scoring points.
 
-### 1.4 The Contextual Target Share (Target Plan)
+### 1.4 Coach Aggressiveness (Go For It) Estimator
+*   **Ref:** `feature_injection_plan.md` (New Section)
+*   **Status:** **[Done]**
+*   **Action:** Implement EWMA for `offense_go_for_it_rate_est` and use it to adjust 4th down playcalling.
+*   **Value:** Captures team-specific tendencies on 4th downs, reducing playcall variance.
+
+### 1.5 The Contextual Target Share (Target Plan)
 *   **Ref:** `target_share_plan.md`
 *   **Technique:** "Base Margin" XGBoost.
 *   **Input:** `EWMA_Share` (Base), Participation Data (Who is on field?), Win Prob (Garbage Time).
