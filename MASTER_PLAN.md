@@ -6,14 +6,18 @@ This document supersedes individual plans as the primary execution schedule. It 
 *Prerequisites for everything. Do not skip.*
 
 1.  **Type Hints (Doc Plan 1.1):** Retrofit `engine/` and `stats/` with strict typing.
+    *   **Status:** **[Done]**
     *   *Why:* Essential for understanding data flow before modifying it.
 2.  **Golden Master Test (Arch Plan 0.1):** Establish a regression baseline.
+    *   **Status:** **[Done]**
     *   *Why:* Ensures we detect if we accidentally break the simulation.
 3.  **AI Context Map (`llms.txt`) [Critical Handoff Artifact]:**
+    *   **Status:** **[Done]**
     *   **Ref:** `documentation_plan.md` (Tier 1)
     *   **Action:** Create `llms.txt` summarizing the "Trilogy of Simulation", file structure, and key patterns.
     *   *Why:* Drastically reduces "Context Loading" time for future AI agents.
 4.  **Data Ingestion (The "Gold Mine"):**
+    *   **Status:** **[Done]**
     *   **Ref:** `data_inventory.md`
     *   **Action:** Update `loader.py` to:
         *   Stop dropping: `temp`, `wind`, `drive_play_count`, `pass_location`.
@@ -23,7 +27,7 @@ This document supersedes individual plans as the primary execution schedule. It 
 *Goal: Replace "Linear & Heuristic" with "Gradient Boosted & Contextual".*
 
 ### 1.1 The XGBoost Play Caller (XGBoost Plan)
-*   **Status:** **[Done]** (In-Place Swap).
+*   **Status:** **[Done in Branch]** (`feat/xgboost-full-migration`).
 *   **Next Step:** **Feature Injection.**
     *   *Input:* Vegas Lines, Score Diff, Down, Dist, Time.
     *   *Action:* Update `models/playcall.py` feature list and `engine/game.py` input vector.
@@ -31,7 +35,7 @@ This document supersedes individual plans as the primary execution schedule. It 
 
 ### 1.2 Snap Share Estimator (Snap Plan)
 *   **Ref:** `snap_share_plan.md`
-*   **Input:** Historical Snap Counts.
+*   **Input:** Historical Snap Counts (Now available in loader).
 *   **Output:** `snap_share_est` (Probability of being on the field).
 *   **Value:** Immediate fix for "WR5 gets random targets" bug. Prerequisite for Target Share.
 
@@ -83,11 +87,11 @@ This document supersedes individual plans as the primary execution schedule. It 
 
 1.  `docs(context): add llms.txt for AI agent handoff`
 2.  `test(golden): add golden master test and fixture`
-3.  `feat(data): ingest snap_counts, participation, and vegas lines in loader`
-4.  `feat(stats): implement EWMA snap_share_estimator`
-5.  `feat(engine): implement probabilistic eligibility filter based on snap share`
-6.  `feat(models): inject Vegas/Tempo features into XGBoost playcall training`
-7.  `refactor(engine): pass game info (Vegas/Weather) to playcall prediction`
-8.  `feat(stats): prepare participation data for target share training`
-9.  `exp(targets): train XGBoost 'Base Margin' target share model`
-10. `feat(physics): implement volume decay logic for RB fatigue`
+3.  `feat(stats): implement EWMA snap_share_estimator`
+4.  `feat(engine): implement probabilistic eligibility filter based on snap share`
+5.  `feat(models): inject Vegas/Tempo features into XGBoost playcall training`
+6.  `refactor(engine): pass game info (Vegas/Weather) to playcall prediction`
+7.  `feat(stats): prepare participation data for target share training`
+8.  `exp(targets): train XGBoost 'Base Margin' target share model`
+9.  `feat(physics): implement volume decay logic for RB fatigue`
+10. `refactor(arch): extract Sampler class from GameState`

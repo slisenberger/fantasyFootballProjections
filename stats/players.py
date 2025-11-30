@@ -16,6 +16,28 @@ rusher_span = 150
 
 
 def calculate(data: pd.DataFrame, team_stats: pd.DataFrame, season: int, week: int) -> pd.DataFrame:
+    """Calculates comprehensive player statistics and estimators for a given season and week.
+
+    This function processes raw play-by-play data, merges roster and depth chart information,
+    and computes various advanced metrics and EWMA-smoothed estimators for each player.
+
+    Args:
+        data (pd.DataFrame): Raw play-by-play data (PBP).
+            Expected columns include: 'play_type', 'pass_attempt', 'rush', 'qb_scramble',
+            'air_yards', 'yards_after_catch', 'receiver_player_id', 'rusher_player_id',
+            'run_gap', 'passer_player_id', 'cpoe', 'field_goal_attempt', 'kicker_player_id',
+            'yardline_100', 'season', 'week', 'posteam', 'defteam', 'position_receiver'.
+        team_stats (pd.DataFrame): Pre-calculated team statistics and estimators.
+            Expected columns include: 'team', various 'offense_oe_est', 'defense_oe_est',
+            'offense_sack_rate_est', 'defense_sack_rate_est', etc.
+        season (int): The current season for which to calculate player stats.
+        week (int): The current week within the season.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing calculated player statistics and estimators,
+                      including share metrics, relative efficiency, and fantasy-relevant
+                      indicators, merged with player metadata (name, position, team).
+    """
     data = data.copy() # Ensure data is a copy to prevent SettingWithCopyWarning
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values('week') # Ensure data is sorted by week for EWMA calculations
@@ -573,6 +595,25 @@ def compute_yac_estimator(data: pd.DataFrame) -> pd.DataFrame:
 
 
 def calculate_weekly(data: pd.DataFrame, weekly_team_stats: pd.DataFrame, season: int) -> pd.DataFrame:
+    """Calculates weekly player statistics for target and carry shares.
+
+    This function aggregates play-by-play data on a weekly basis, computes player
+    and team weekly totals, and derives weekly percentage shares (e.g., target share)
+    adjusted for player availability (injuries).
+
+    Args:
+        data (pd.DataFrame): Raw play-by-play data (PBP).
+            Expected columns include: 'play_type', 'rush', 'receiver_player_id',
+            'rusher_player_id', 'yardline_100', 'season', 'week', 'posteam'.
+        weekly_team_stats (pd.DataFrame): Weekly team totals for targets, carries, etc.
+            Expected columns include: 'team', 'season', 'week', 'targets_wk',
+            'carries_wk', 'redzone_targets_wk', 'redzone_carries_wk'.
+        season (int): The current season for which to calculate weekly stats.
+
+    Returns:
+        pd.DataFrame: A DataFrame containing weekly player statistics, including
+                      target/carry percentages, and merged roster information.
+    """
     data = data.loc[(data.play_type.isin(["no_play", "pass", "run", "field_goal"]))]
     data = data.sort_values(['season', 'week']) # Ensure data is sorted for multi-year EWMA calculation
     all_players = build_player_id_map(data)

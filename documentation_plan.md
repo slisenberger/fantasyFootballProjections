@@ -13,6 +13,7 @@ This plan transforms the project's documentation from a collection of stale mark
     1.  Target `engine/game.py` and `stats/players.py` first (Core Logic).
     2.  Use AI assistance to infer types for complex DF transformations.
     3.  **Definition of Done:** `mypy --ignore-missing-imports` passes on core modules.
+*   **Status:** **[Done]**
 
 ### Step 3.1: Architectural Memory (ADRs)
 *   **Goal:** Capture *why* decisions were made, preventing the "Chesterton's Fence" problem during the refactor.
@@ -20,11 +21,14 @@ This plan transforms the project's documentation from a collection of stale mark
 *   **Immediate Tasks:**
     *   `001-monolithic-gamestate-refactor.md`
     *   `002-bayesian-estimators.md`
+    *   `003-xgboost-migration.md`
+*   **Status:** **[Done]**
 
 ### Step 4.1: The AI Context Map (`llms.txt`)
 *   **Goal:** Create a high-density entry point for AI Agents (like Gemini/Copilot) to understand the project instantly.
 *   **Action:** Create a root-level file designed specifically for RAG consumption.
 *   **Content:** Condensed project structure, key architectural patterns ("Trilogy of Simulation"), and command reference.
+*   **Status:** **[Done]**
 
 ---
 
@@ -38,13 +42,7 @@ This plan transforms the project's documentation from a collection of stale mark
     *   Must include `Args`, `Returns`, and `Raises` sections.
     *   **Crucial:** The `Args` section must describe the *shape* of DataFrames if a DF is passed.
 *   **Enforcement (As-We-Go):** Implement a `pre-commit` hook to run `ruff --select D` (or `pydocstyle`) on staged files. This ensures new/modified code is compliant.
-
-### Step 3.2: Migration of Legacy Docs
-*   **Action:** Refactor existing MD files into the new structure.
-*   **Details:**
-    *   `hypotheses.md` -> `docs/architecture/hypotheses_log.md`
-    *   `ROADMAP.md` -> `docs/project/roadmap.md`
-    *   `BENCHMARKS.md` -> `docs/guides/benchmarking.md`
+*   **Status:** **[In Progress]** (Engine/GameState & Player/Team calculate methods)
 
 ---
 

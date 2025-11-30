@@ -11,7 +11,28 @@ import pandas as pd
 # The gamestate would itself be update, a synthetic play would be generated, and this can be used in
 # any sort of projection model we want.
 class GameState:
-    """Representation of the Game Details of a football game, like down, quarter, and clock."""
+    """Representation of the Game Details of a football game, like down, quarter, and clock.
+    
+    This class acts as the central engine for the Monte Carlo simulation. It maintains the
+    state of the game (score, possession, field position) and orchestrates the transition
+    between states by invoking strategies and models.
+
+    Attributes:
+        home_team (str): Abbreviation of the home team (e.g., "KC").
+        away_team (str): Abbreviation of the away team (e.g., "DET").
+        posteam (str): Team currently in possession.
+        quarter (int): Current quarter (1-4, 5+ for OT).
+        down (int): Current down (1-4).
+        yds_to_go (int): Yards required for a first down.
+        sec_remaining (int): Seconds remaining in the current quarter.
+        home_score (int): Current score for home team.
+        away_score (int): Current score for away team.
+        yard_line (int): Distance from the home team's endzone (0-100). 
+                         0 = Home Endzone, 100 = Away Endzone.
+        rules (ScoringSettings): Configuration for fantasy point scoring.
+        fantasy_points (DefaultDict[str, float]): Accumulator for fantasy points by player ID.
+        play_log (List[Dict]): History of executed plays for auditing/debugging.
+    """
 
     def __init__(
         self,
@@ -25,6 +46,19 @@ class GameState:
         rules: ScoringSettings,
         trace: bool = False
     ):
+        """Initializes the GameState with teams, stats, and models.
+
+        Args:
+            models: Dictionary of loaded ML models and KDEs.
+            home_team: Home team abbreviation.
+            away_team: Away team abbreviation.
+            home_player_stats: DataFrame of home player stats/estimators.
+            away_player_stats: DataFrame of away player stats/estimators.
+            home_team_stats: DataFrame of home team stats (defensive/offensive profiles).
+            away_team_stats: DataFrame of away team stats.
+            rules: ScoringSettings object defining fantasy point values.
+            trace: If True, records a log of every play.
+        """
         # Names of the participating teams
         self.home_team = home_team
         self.away_team = away_team
@@ -155,6 +189,16 @@ class GameState:
         return random.choice(samples)
 
     def play_game(self) -> Tuple[Dict[str, float], List[Dict[str, Any]]]:
+        """Simulates an entire game from kickoff to end.
+
+        Transitions the state through all quarters and overtime until game_over is True.
+        Applies end-of-game defensive scoring logic.
+
+        Returns:
+            Tuple containing:
+                - fantasy_points (Dict[str, float]): Map of player_id to total fantasy points.
+                - play_log (List[Dict]): Detailed log of plays (if trace=True).
+        """
         self.opening_kickoff()
         while not self.game_over:
             self.advance_snap()
@@ -168,6 +212,14 @@ class GameState:
         return self.fantasy_points, self.play_log
 
     def get_defense_score_points(self, score: int) -> float:
+        """Calculates fantasy points for a defense based on opponent's final score.
+        
+        Args:
+            score (int): The opponent's final score.
+
+        Returns:
+            float: Fantasy points awarded to the defense.
+        """
         if score == 0:
             return self.rules.pa_0
         elif score < 7:
@@ -184,6 +236,7 @@ class GameState:
             return self.rules.pa_35_plus
 
     def change_possession(self) -> None:
+        """Switches possession of the ball to the other team."""
         if self.in_overtime:
             self.ot_possession_count += 1
             
@@ -193,6 +246,7 @@ class GameState:
             self.posteam = self.home_team
 
     def opening_kickoff(self) -> None:
+        """Initializes the game state for the opening kickoff."""
         self.down = 1
         self.quarter = 1
         self.posteam = random.choice([self.home_team, self.away_team])
@@ -202,6 +256,7 @@ class GameState:
         self.yard_line = 75
 
     def start_overtime(self) -> None:
+        """Initializes the game state for the start of overtime."""
         self.in_overtime = True
         # self.quarter will be incremented to 5 in advance_clock immediately after this returns
         self.posteam = random.choice([self.home_team, self.away_team])
@@ -209,11 +264,18 @@ class GameState:
         self.first_down()
 
     def kickoff(self) -> None:
+        """Resets the game state for a kickoff (after a score or start of half/OT)."""
         self.change_possession()
         self.yard_line = 75
         self.first_down()
 
     def advance_snap(self) -> None:
+        """Executes a single play (snap) and updates the game state.
+
+        Determines the play type (Run/Pass/Kick), selects players involved,
+        simulates the outcome (yards, turnover, score), updates field position/clock,
+        and accumulates fantasy points.
+        """
         playcall = self.choose_playcall()
         is_complete = 0
         yards = 0.0
@@ -437,7 +499,12 @@ class GameState:
 
         self.advance_clock(playcall, sack, is_complete, scramble)
 
-    def extra_point(self):
+    def extra_point(self) -> bool:
+        """Simulates an extra point attempt.
+
+        Returns:
+            bool: True if the extra point is good, False otherwise.
+        """
         # Arbitrary value chosen from google. In future, compute this from lg avg or model.
         chance = 0.93
         good = False
@@ -451,7 +518,8 @@ class GameState:
         self.kickoff()
         return good
 
-    def touchdown(self):
+    def touchdown(self) -> None:
+        """Updates game state and score for a touchdown."""
         if self.posteam == self.home_team:
             self.home_score += 6
         else:
@@ -460,7 +528,8 @@ class GameState:
         if self.in_overtime:
             self.game_over = True
 
-    def safety(self):
+    def safety(self) -> None:
+        """Updates game state and score for a safety."""
         # Give 2 points to the team that does not have the ball.
         if self.posteam == self.home_team:
             self.away_score += 2
@@ -473,7 +542,18 @@ class GameState:
         self.kickoff()
 
     # Manage the clock using empirical runoff data
-    def advance_clock(self, playcall, sack, is_complete, scramble):
+    def advance_clock(self, playcall: PlayType, sack: bool, is_complete: int, scramble: bool) -> None:
+        """Advances the game clock based on play outcome and game situation.
+
+        Uses a clock model to determine empirical runoff for plays, with fallback logic.
+        Handles quarter transitions, half time, and game end conditions.
+
+        Args:
+            playcall (PlayType): The type of play that just occurred.
+            sack (bool): True if the play was a sack.
+            is_complete (int): 1 if pass was complete, 0 otherwise.
+            scramble (bool): True if the play was a QB scramble.
+        """
         original_sec_remaining = self.sec_remaining
         
         # Determine Buckets
@@ -555,16 +635,27 @@ class GameState:
                 else:
                     self.sec_remaining = 10 * 60 # 10 min OT
 
-    def is_winning(self, team):
+    def is_winning(self, team: str) -> bool:
+        """Determines if the specified team is currently winning.
+
+        Args:
+            team (str): The team abbreviation to check.
+
+        Returns:
+            bool: True if the team is winning, False otherwise.
+        """
+        if self.home_team == team:
         if self.home_team == team:
             return self.home_score > self.away_score
         else:
             return self.away_score > self.home_score
 
-    def game_end(self):
+    def game_end(self) -> None:
+        """Sets the game_over flag to True, ending the simulation."""
         self.game_over = True
 
-    def turnover_on_downs(self):
+    def turnover_on_downs(self) -> None:
+        """Handles a turnover on downs, changing possession and field position."""
         self.change_possession()
         
         if self.in_overtime and self.ot_possession_count == 2 and self.ot_first_drive_score == 3:
@@ -574,15 +665,18 @@ class GameState:
         self.first_down()
 
     def first_down(self):
+        """Resets down and distance for a first down."""
         self.down = 1
         self.yds_to_go = 10 if self.yard_line >= 10 else self.yard_line
 
-    def half_time(self):
+    def half_time(self) -> None:
+        """Handles half-time procedures, including possession change and field position reset."""
         self.posteam = self.second_half_posteam
         self.yard_line = 75
         self.first_down()
 
     def score_differential(self):
+        """Calculates the score differential from the perspective of the team with possession."""
         pos_score = (
             self.home_score if self.posteam == self.home_team else self.away_score
         )
@@ -592,7 +686,14 @@ class GameState:
         return pos_score - def_score
 
     # Choose a play type for this snap
-    def choose_playcall(self):
+    def choose_playcall(self) -> PlayType:
+        """Predicts the next play type (Run, Pass, Punt, FG) using the playcall model.
+
+        Combines the ML model's base probability with contextual adjustments (team tendencies).
+
+        Returns:
+            PlayType: The selected play type enum.
+        """
         PASS_INDEX = 1
         RUN_INDEX = 3
         # Baseline -- Use a logistic regression model to choose a playtype.
@@ -635,7 +736,12 @@ class GameState:
         
         return PlayType.RUN
 
-    def choose_target(self):
+    def choose_target(self) -> Optional[Dict[str, Any]]:
+        """Selects a receiver to target based on their target share.
+
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary of the chosen target's stats, or None if no candidates.
+        """
         if self.posteam == self.home_team:
             candidates = self.home_targets
             weights = self.home_target_weights
@@ -649,12 +755,25 @@ class GameState:
         target = random.choices(candidates, weights=weights, k=1)[0]
         return target
 
-    def is_scramble(self, qb):
+    def is_scramble(self, qb: Optional[Dict[str, Any]]) -> bool:
+        """Determines if the quarterback scrambles on a pass play.
+
+        Args:
+            qb (Optional[Dict[str, Any]]): Dictionary of the quarterback's stats.
+
+        Returns:
+            bool: True if the QB scrambles, False otherwise.
+        """
         if not qb: return False
         scramble_rate = qb.get("scramble_rate_est", 0)
         return random.random() < scramble_rate
 
     def choose_carrier(self):
+        """Selects a ball carrier based on their carry share.
+
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary of the chosen carrier's stats, or None if no candidates.
+        """
         if self.posteam == self.home_team:
             candidates = self.home_carriers
             weights = self.home_carry_weights
@@ -675,7 +794,12 @@ class GameState:
         carrier = random.choices(candidates, weights=weights, k=1)[0]
         return carrier
 
-    def choose_quarterback(self):
+    def choose_quarterback(self) -> Optional[Dict[str, Any]]:
+        """Selects the starting quarterback for the current possession.
+
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary of the chosen quarterback's stats, or None if no QBs.
+        """
         if self.posteam == self.home_team:
             qbs = self.home_qbs
         else:
@@ -685,7 +809,12 @@ class GameState:
             return None
         return qbs[0] # Assuming we pre-filtered to 1 QB
 
-    def choose_kicker(self):
+    def choose_kicker(self) -> Optional[Dict[str, Any]]:
+        """Selects the starting kicker for the current possession.
+
+        Returns:
+            Optional[Dict[str, Any]]: Dictionary of the chosen kicker's stats, or None if no kickers.
+        """
         if self.posteam == self.home_team:
             ks = self.home_kickers
         else:
@@ -695,7 +824,18 @@ class GameState:
             return None
         return ks[0]
 
-    def compute_air_yards(self, target):
+    def compute_air_yards(self, target: Dict[str, Any]) -> float:
+        """Simulates air yards for a pass play.
+
+        Adjusts the sampled air yards based on player skill (relative air yards estimator)
+        and defensive scheme (relative air yards allowed).
+
+        Args:
+            target (Dict[str, Any]): Dictionary of the target player's stats.
+
+        Returns:
+            float: Simulated air yards for the play.
+        """
         pos = target["position"]
         # Use special position trained models at first, before adjusting.
 
@@ -728,7 +868,18 @@ class GameState:
 
         return base
 
-    def compute_yac(self, target):
+    def compute_yac(self, target: Dict[str, Any]) -> float:
+        """Simulates yards after catch (YAC) for a pass completion.
+
+        Adjusts the sampled YAC based on player skill (relative YAC estimator)
+        and defensive scheme (relative YAC allowed).
+
+        Args:
+            target (Dict[str, Any]): Dictionary of the chosen target's stats.
+
+        Returns:
+            float: Simulated yards after catch.
+        """
         pos = target["position"]
         if pos not in [Position.WR, Position.RB, Position.TE]:
             pos = "ALL"
@@ -747,7 +898,19 @@ class GameState:
             yac *= relative_yac_est
         return yac
 
-    def compute_carry_yards(self, carrier):
+    def compute_carry_yards(self, carrier: Dict[str, Any]) -> float:
+        """Simulates rushing yards for a run play.
+
+        Adjusts the sampled rushing yards based on player skill (relative YPC estimator)
+        and defensive strength (relative YPC allowed). Distinguishes between open field
+        and red zone carries.
+
+        Args:
+            carrier (Dict[str, Any]): Dictionary of the ball carrier's stats.
+
+        Returns:
+            float: Simulated rushing yards.
+        """
         # Determine dist to goal to check Red Zone
         if self.posteam == self.home_team:
             dist_to_goal = 100 - self.yard_line
@@ -768,13 +931,24 @@ class GameState:
         
         return yards
 
-    def compute_scramble_yards(self, qb):
+    def compute_scramble_yards(self, qb: Dict[str, Any]) -> float:
+        """Simulates rushing yards for a quarterback scramble.
+
+        Adjusts the sampled scramble yards based on the QB's relative scramble efficiency.
+
+        Args:
+            qb (Dict[str, Any]): Dictionary of the quarterback's stats.
+
+        Returns:
+            float: Simulated scramble yards.
+        """
         yards = self._get_sample(self.scramble_samples)
         multiplier = qb.get("relative_yards_per_scramble_est", 1.0)
         yards *= multiplier
         return yards
 
-    def punt(self):
+    def punt(self) -> None:
+        """Simulates a punt play, updating field position and possession."""
         punt_distance = 45
         new_yardline = self.yard_line - punt_distance
         if new_yardline < 0:
@@ -785,7 +959,11 @@ class GameState:
         self.down = 1
         self.yds_to_go = 10
 
-    def field_goal(self):
+    def field_goal(self) -> None:
+        """Simulates a field goal attempt.
+
+        Determines outcome (good/no good) using a field goal model and updates score/possession.
+        """
         kicking_yards = self.yard_line + 17
         
         model_input = [
@@ -835,6 +1013,14 @@ class GameState:
             self.turnover_on_downs()
 
     def get_pos_player_stats(self):
+        """Retrieves the player statistics DataFrame for the team currently in possession.
+
+        This method might be deprecated if we use cached lists directly within the class
+        to avoid Pandas overhead in hot loops.
+
+        Returns:
+            pd.DataFrame: DataFrame of player stats for the possessing team.
+        """
         # This method might be deprecated if we use cached lists directly
         # But keeping for safety if other methods use it.
         # Ideally, we shouldn't call this in hot loops.
@@ -844,18 +1030,40 @@ class GameState:
             return self.away_player_stats
 
     def get_pos_team_stats(self):
+        """Retrieves the team statistics dictionary for the team currently in possession.
+
+        Returns:
+            Dict[str, Any]: Dictionary of team statistics.
+        """
         if self.posteam == self.home_team:
             return self.home_team_stats_dict
         else:
             return self.away_team_stats_dict
 
     def get_def_team_stats(self):
+        """Retrieves the team statistics dictionary for the team currently on defense.
+
+        Returns:
+            Dict[str, Any]: Dictionary of team statistics.
+        """
         if self.posteam == self.home_team:
             return self.away_team_stats_dict
         else:
             return self.home_team_stats_dict
 
-    def is_complete(self, air_yards, target):
+    def is_complete(self, air_yards: float, target: Dict[str, Any]) -> int:
+        """Determines if a pass is complete or incomplete.
+
+        Uses a completion model, adjusted by quarterback and receiver CPOE estimators,
+        and defensive CPOE suppression.
+
+        Args:
+            air_yards (float): The air yards simulated for the pass.
+            target (Dict[str, Any]): Dictionary of the target player's stats.
+
+        Returns:
+            int: 1 if the pass is complete, 0 if incomplete.
+        """
         COMPLETE_INDEX = 1
         INCOMPLETE_INDEX = 0
         # Baseline -- Use a logistic regression model to choose a playtype.
@@ -894,14 +1102,33 @@ class GameState:
 
         return complete
 
-    def defteam(self):
+    def defteam(self) -> str:
+        """Returns the abbreviation of the team currently on defense.
+
+        Returns:
+            str: Team abbreviation (e.g., "KC").
+        """
         if self.posteam == self.home_team:
             return self.home_team
         else:
             return self.away_team
 
 
-def compute_odds_ratio(p1, p2, lg):
+def compute_odds_ratio(p1: float, p2: float, lg: float) -> float:
+    """Computes an adjusted probability using an odds ratio blending method.
+
+    Blends a player/team specific probability (p1) with a defensive probability (p2)
+    relative to a league average (lg). This smooths out extreme values and prevents
+    double-counting.
+
+    Args:
+        p1 (float): Player/team specific probability.
+        p2 (float): Opponent specific probability.
+        lg (float): League average probability.
+
+    Returns:
+        float: The blended probability.
+    """
     epsilon = 1e-4
     p1 = max(epsilon, min(1 - epsilon, p1))
     p2 = max(epsilon, min(1 - epsilon, p2))
