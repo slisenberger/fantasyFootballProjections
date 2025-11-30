@@ -91,7 +91,7 @@ def project_week(data, snap_data, models, season, week, config):
             "player_id", "player_name", "position", "team", "status", "exp_return",
             "relative_air_yards_est", "target_share_est", "redzone_target_share_est",
             "target_percentage", "targets", "relative_yac", "relative_yac_est",
-            "receiver_cpoe_est", "carry_share_est", "redzone_carry_share_est",
+            "receiver_cpoe_est", "carry_share_est", "redzone_carry_share_est", "goal_line_carry_share_est",
             "carry_percentage", "carries", "relative_ypc", "relative_ypc_est",
             "cpoe_est", "pass_attempts", "scramble_rate_est", "yards_per_scramble_est",
             "relative_yards_per_scramble_est", "snap_share_est", "fgoe_est", "is_mobile",

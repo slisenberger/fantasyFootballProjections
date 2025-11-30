@@ -334,10 +334,20 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
     red_zone_carries = (
         data.loc[data.rush == 1]
         .loc[data.yardline_100 <= 10]
-        .groupby(["posteam", "week"])["rusher_player_id"]
+        .groupby("posteam")["rusher_player_id"]
         .count()
         .sort_values()
         .to_frame(name="red_zone_carries")
+        .reset_index()
+        .rename(columns={"posteam": "team"})
+    )
+    goal_line_carries = (
+        data.loc[data.rush == 1]
+        .loc[data.yardline_100 <= 3]
+        .groupby("posteam")["rusher_player_id"]
+        .count()
+        .sort_values()
+        .to_frame(name="goal_line_carries")
         .reset_index()
         .rename(columns={"posteam": "team"})
     )
@@ -461,6 +471,7 @@ def calculate(data: pd.DataFrame, season: int) -> pd.DataFrame:
         .merge(carries, on="team", how="left")
         .merge(red_zone_targets, how="left", on="team")
         .merge(red_zone_carries, how="left", on="team")
+        .merge(goal_line_carries, how="left", on="team")
         .merge(deep_targets, how="left", on="team")
         .merge(def_sacks, how="left", on="team")
         .merge(def_int, how="left", on="team")
@@ -590,11 +601,22 @@ def calculate_weekly(data: pd.DataFrame, season: int) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"posteam": "team"})
     )
+    goal_line_carries_weekly = (
+        data.loc[data.rush == 1]
+        .loc[data.yardline_100 <= 3]
+        .groupby(["season", "posteam", "week"])["rusher_player_id"]
+        .count()
+        .sort_values()
+        .to_frame(name="goal_line_carries_wk")
+        .reset_index()
+        .rename(columns={"posteam": "team"})
+    )
 
     weekly_data = (
         targets_weekly.merge(carries_weekly, how="outer", on=["season", "team", "week"])
         .merge(red_zone_targets_weekly, how="outer", on=["season", "team", "week"])
         .merge(red_zone_carries_weekly, how="outer", on=["season", "team", "week"])
+        .merge(goal_line_carries_weekly, how="outer", on=["season", "team", "week"])
     )
     if season <= 2019:
         weekly_data["team"] = weekly_data["team"].replace("LV", "OAK")

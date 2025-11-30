@@ -161,12 +161,19 @@ class GameState:
                 return starting.to_dict('records')
             return ks.sort_values(by="kick_attempts", ascending=False).head(1).to_dict('records')
 
-        def get_carriers(df):
-            eligible = df.loc[df["carry_percentage"] > 0]
+        def get_carriers(df, zone="standard"):
+            if zone == "goal_line":
+                est_col = "goal_line_carry_share_est"
+            elif zone == "redzone":
+                est_col = "redzone_carry_share_est"
+            else:
+                est_col = "carry_share_est"
+                
+            eligible = df.loc[df[est_col] > 0]
             if eligible.empty: return [], []
             # Return list of dicts and list of weights
             records = eligible.to_dict('records')
-            weights = [p["carry_share_est"] for p in records]
+            weights = [p[est_col] for p in records]
             return records, weights
 
         def get_targets(df):
@@ -190,8 +197,14 @@ class GameState:
         self.home_kickers = get_kickers(home_player_stats)
         self.away_kickers = get_kickers(away_player_stats)
         
-        self.home_carriers, self.home_carry_weights = get_carriers(home_player_stats)
-        self.away_carriers, self.away_carry_weights = get_carriers(away_player_stats)
+        self.home_carriers, self.home_carry_weights = get_carriers(home_player_stats, "standard")
+        self.away_carriers, self.away_carry_weights = get_carriers(away_player_stats, "standard")
+        
+        self.home_rz_carriers, self.home_rz_carry_weights = get_carriers(home_player_stats, "redzone")
+        self.away_rz_carriers, self.away_rz_carry_weights = get_carriers(away_player_stats, "redzone")
+        
+        self.home_gl_carriers, self.home_gl_carry_weights = get_carriers(home_player_stats, "goal_line")
+        self.away_gl_carriers, self.away_gl_carry_weights = get_carriers(away_player_stats, "goal_line")
         
         self.home_targets, self.home_target_weights = get_targets(home_player_stats)
         self.away_targets, self.away_target_weights = get_targets(away_player_stats)
@@ -873,12 +886,32 @@ class GameState:
         Returns:
             Optional[Dict[str, Any]]: Dictionary of the chosen carrier's stats, or None if no candidates.
         """
+        # Determine dist to goal to check Red Zone / Goal Line
         if self.posteam == self.home_team:
-            candidates = self.home_carriers
-            weights = self.home_carry_weights
+            dist_to_goal = 100 - self.yard_line
         else:
-            candidates = self.away_carriers
-            weights = self.away_carry_weights
+            dist_to_goal = self.yard_line
+            
+        if self.posteam == self.home_team:
+            if dist_to_goal <= 3:
+                candidates = self.home_gl_carriers
+                weights = self.home_gl_carry_weights
+            elif dist_to_goal <= 20:
+                candidates = self.home_rz_carriers
+                weights = self.home_rz_carry_weights
+            else:
+                candidates = self.home_carriers
+                weights = self.home_carry_weights
+        else:
+            if dist_to_goal <= 3:
+                candidates = self.away_gl_carriers
+                weights = self.away_gl_carry_weights
+            elif dist_to_goal <= 20:
+                candidates = self.away_rz_carriers
+                weights = self.away_rz_carry_weights
+            else:
+                candidates = self.away_carriers
+                weights = self.away_carry_weights
             
         if not candidates:
             return None

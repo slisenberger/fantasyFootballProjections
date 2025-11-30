@@ -325,14 +325,20 @@ def calculate(data: pd.DataFrame, snap_counts: pd.DataFrame, team_stats: pd.Data
     carries_est = weekly_carry_share_estimator(weekly_player_stats)
     snaps_est = weekly_snap_share_estimator(weekly_player_stats)
     fgoe_est = weekly_fgoe_estimator(weekly_player_stats)
+    gl_carries_est = weekly_goal_line_carry_share_estimator(weekly_player_stats) # Added
+    
     offense_stats = offense_stats.merge(targets_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(carries_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(snaps_est, how="outer", on="player_id")
     offense_stats = offense_stats.merge(fgoe_est, how="outer", on="player_id")
+    offense_stats = offense_stats.merge(gl_carries_est, how="outer", on="player_id") # Added
+    
     offense_stats["target_share_est"].fillna(0, inplace=True)
     offense_stats["carry_share_est"].fillna(0, inplace=True)
     offense_stats["snap_share_est"].fillna(0, inplace=True)
     offense_stats["fgoe_est"].fillna(0, inplace=True)
+    offense_stats["goal_line_carry_share_est"].fillna(0, inplace=True) # Added
+    
     rz_targets_est = weekly_redzone_target_share_estimator(weekly_player_stats)
     rz_carries_est = weekly_redzone_carry_share_estimator(weekly_player_stats)
     offense_stats = offense_stats.merge(rz_targets_est, how="outer", on="player_id")
@@ -695,6 +701,16 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
         .reset_index()
         .rename(columns={"rusher_player_id": "player_id"})
     )
+    weekly_goal_line_carries = (
+        data.loc[data.rush == 1]
+        .loc[data.yardline_100 <= 3]
+        .groupby(["season", "rusher_player_id", "week"])
+        .size()
+        .sort_values()
+        .to_frame(name="goal_line_carries_wk")
+        .reset_index()
+        .rename(columns={"rusher_player_id": "player_id"})
+    )
     weekly_yards_per_carry = (
         weekly_rusher_data["rushing_yards"]
         .mean()
@@ -730,6 +746,7 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
         .merge(weekly_air_yards_target, how="outer", on=["season", "player_id", "week"])
         .merge(weekly_carries, how="outer", on=["season", "player_id", "week"])
         .merge(weekly_red_zone_carries, how="outer", on=["season", "player_id", "week"])
+        .merge(weekly_goal_line_carries, how="outer", on=["season", "player_id", "week"])
         .merge(weekly_yards_per_carry, how="outer", on=["season", "player_id", "week"])
         .merge(fgoe_weekly, how="outer", on=["season", "player_id", "week"]) # Merge FGOE
         # Note: Injuries merge is tricky with multi-season. Assuming we want current season injuries or ignoring for backtest EWMA history?
@@ -776,6 +793,7 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
             "carries_wk",
             "redzone_targets_wk",
             "redzone_carries_wk",
+            "goal_line_carries_wk",
         ]
     ]
     weekly_stats = weekly_stats.merge(
@@ -787,18 +805,22 @@ def calculate_weekly(data: pd.DataFrame, snap_counts: pd.DataFrame, weekly_team_
     weekly_stats["carries_wk_team"] = weekly_stats["carries_wk_team"].fillna(0)
     weekly_stats["redzone_targets_wk_team"] = weekly_stats["redzone_targets_wk_team"].fillna(0)
     weekly_stats["redzone_carries_wk_team"] = weekly_stats["redzone_carries_wk_team"].fillna(0)
+    weekly_stats["goal_line_carries_wk_team"] = weekly_stats["goal_line_carries_wk_team"].fillna(0)
 
     weekly_stats["target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row), axis=1
     )
     weekly_stats["carry_percentage_wk"] = weekly_stats.apply(
-        lambda row: compute_carry_percentage(row), axis=1
+        lambda row: compute_carry_percentage(row, "standard"), axis=1
     )
     weekly_stats["redzone_target_percentage_wk"] = weekly_stats.apply(
         lambda row: compute_target_percentage(row, True), axis=1
     )
     weekly_stats["redzone_carry_percentage_wk"] = weekly_stats.apply(
-        lambda row: compute_carry_percentage(row, True), axis=1
+        lambda row: compute_carry_percentage(row, "redzone"), axis=1
+    )
+    weekly_stats["goal_line_carry_percentage_wk"] = weekly_stats.apply(
+        lambda row: compute_carry_percentage(row, "goal_line"), axis=1
     )
     weekly_stats["player_name"] = weekly_stats.apply(
         lambda row: all_players[row["player_id"]], axis=1
@@ -819,9 +841,17 @@ def compute_target_percentage(row: pd.Series, redzone: bool = False) -> float:
         return np.nan
 
 
-def compute_carry_percentage(row: pd.Series, redzone: bool = False) -> float:
-    player_metric = "redzone_carries_wk" if redzone else "carries_wk"
-    team_metric = "redzone_carries_wk_team" if redzone else "carries_wk_team"
+def compute_carry_percentage(row: pd.Series, mode: str = "standard") -> float:
+    if mode == "goal_line":
+        player_metric = "goal_line_carries_wk"
+        team_metric = "goal_line_carries_wk_team"
+    elif mode == "redzone":
+        player_metric = "redzone_carries_wk"
+        team_metric = "redzone_carries_wk_team"
+    else:
+        player_metric = "carries_wk"
+        team_metric = "carries_wk_team"
+
     if row["available"]:
         if row[team_metric] == 0:
             return 0.0
@@ -945,6 +975,25 @@ def weekly_redzone_carry_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFr
         carry_span, 
         priors_df, 
         'redzone_carry_share_est'
+    )
+
+
+def weekly_goal_line_carry_share_estimator(weekly_data: pd.DataFrame) -> pd.DataFrame:
+    # Assume part of a committee of 4 backs
+    carry_prior = 0
+    # Temporarily shorten span for early season.
+    carry_span = 17
+    
+    priors_df = weekly_data[['player_id']].drop_duplicates()
+    priors_df['goal_line_carry_percentage_wk'] = carry_prior
+    
+    return _compute_estimator_vectorized(
+        weekly_data, 
+        'player_id', 
+        'goal_line_carry_percentage_wk', 
+        carry_span, 
+        priors_df, 
+        'goal_line_carry_share_est'
     )
 
 

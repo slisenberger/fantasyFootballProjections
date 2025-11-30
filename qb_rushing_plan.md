@@ -22,6 +22,10 @@
 *   **Action:**
     *   Check `redzone_carry_share_est` logic.
     *   Maybe boost QB carry probability inside the 5-yard line?
+*   **Status:** **[Done]**
+    *   Implemented `weekly_goal_line_carry_share_estimator` (Inside 3 yards).
+    *   Updated `engine/game.py` to use Goal Line carry weights when `yardline_100 <= 3`.
+    *   **Result:** QB Fail High dropped from 29.0% to 23.9%.
 
 ## 3. Data Hygiene
 *   **Action:** Update `models/rushers.py` to use `loader.load_data` instead of manual CSV reading (consistent with recent fixes).
