@@ -40,7 +40,13 @@ This document supersedes individual plans as the primary execution schedule. It 
 *   **Output:** `snap_share_est` (Probability of being on the field).
 *   **Value:** Immediate fix for "WR5 gets random targets" bug. Prerequisite for Target Share.
 
-### 1.3 The Contextual Target Share (Target Plan)
+### 1.3 Kicker FGOE Estimator
+*   **Ref:** (New - currently undocumented in a specific plan)
+*   **Status:** **[Done]**
+*   **Action:** Implement a Field Goal Over Expected (FGOE) estimator for kickers to calibrate their individual skill.
+*   **Value:** Improved kicker calibration and fixing a critical bug where missed FGs were incorrectly scoring points.
+
+### 1.4 The Contextual Target Share (Target Plan)
 *   **Ref:** `target_share_plan.md`
 *   **Technique:** "Base Margin" XGBoost.
 *   **Input:** `EWMA_Share` (Base), Participation Data (Who is on field?), Win Prob (Garbage Time).
